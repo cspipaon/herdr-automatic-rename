@@ -88,7 +88,8 @@ declare -p WRAPPER_PROGRAMS >/dev/null 2>&1 || WRAPPER_PROGRAMS=(node bun deno n
 #          there is no task -- another kind of tab, or a missing or unusable
 #          title -- it yields its place to the name text (unless a name part
 #          is listed on its own), so (icon task) reads glyph+task on agent
-#          tabs and glyph+name everywhere else.
+#          tabs and glyph+name on other program tabs (shells stay text-only,
+#          as ever).
 #
 # (name) is the default and the old behavior; (icon name) is the old icons
 # look. Text parts join with ":", in the order written: (name task) reads
@@ -402,8 +403,8 @@ ar_format() {
       ptext=$ctask
       # A task with nothing to show yields its place to the name text (unless
       # a name part is listed on its own), so (icon task) reads glyph+task on
-      # a tab with a task and glyph+name on every other tab, rather than
-      # leaving plain tabs a bare glyph. On an agent pane $name is already the
+      # a tab with a task and glyph+name on other program tabs (shells stay
+      # text-only, as ever), rather than leaving plain tabs a bare glyph. On an agent pane $name is already the
       # detected agent, so a suspended agent with an unusable title reads
       # "<glyph> claude", never a glyph alone.
       if [ -z "$ptext" ] && ! ar_in_list name "${plist[@]}"; then

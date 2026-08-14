@@ -107,7 +107,7 @@ All notable changes to herdr-automatic-rename are documented here. The format fo
   and future parts have a home without another mode knob. Where there is no
   task, the task part yields its place to the name text (unless a name part
   is listed on its own), so `(icon task)` reads glyph+task on agent tabs and
-  glyph+name everywhere else. `ICON_FALLBACK`
+  glyph+name on other program tabs (shells stay text-only, as ever). `ICON_FALLBACK`
   and `ICON_MAP` are untouched: they pick WHICH glyph, `TAB_LABEL` says
   whether and where. A config that sets none of the removed knobs is
   unaffected: the default `(name)` renders exactly what it always did.

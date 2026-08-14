@@ -70,8 +70,9 @@
 #          task as its terminal title, so nothing is invented here: that title
 #          is only shortened to a label. Where there is no task, it yields its
 #          place to the name text (unless a name part is listed on its own):
-#          (icon task) reads glyph+task on agent tabs, glyph+name everywhere
-#          else. Five claude tabs under (task) then read
+#          (icon task) reads glyph+task on agent tabs and glyph+name on other
+#          program tabs (shells stay text-only, as ever). Five claude tabs
+#          under (task) then read
 #          "screensaver-timeout", "nightly-ETL-job", ... instead of "claude"
 #          five times.
 #

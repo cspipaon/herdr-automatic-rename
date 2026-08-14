@@ -389,6 +389,13 @@ check "the name stands in for an unusable title" "$g_agent claude" \
   "$(TAB_LABEL='icon task' ar_format 'zsh' 'zsh' 'to the and of' 'claude')"
 check "no stand-in when a name part is listed" "$g_agent claude" \
   "$(TAB_LABEL='icon name task' ar_format 'zsh' 'zsh' 'to the and of' 'claude')"
+# The stand-in's own edges: HIDE_SHELL still blanks a shell pane with no task
+# to stand in for, and a stood-in name is a NAME label, truncated by
+# MAX_NAME_LEN rather than the task budget.
+check "HIDE_SHELL still blanks a taskless shell pane" "" \
+  "$(HIDE_SHELL=1 TAB_LABEL=task ar_format 'zsh' 'zsh' '')"
+check "a stand-in name is truncated by MAX_NAME_LEN" "long" \
+  "$(MAX_NAME_LEN=4 MAX_TASK_LEN=30 TAB_LABEL=task ar_format 'longprogram' 'longprogram' '')"
 # The lone-fallback rule keys on PROVENANCE recorded at lookup time, not on
 # glyph or label values: a task equal to ICON_FALLBACK survives, a MAPPED
 # glyph equal to ICON_FALLBACK survives, and fallback icons cannot slip a
