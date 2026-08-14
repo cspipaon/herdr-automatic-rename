@@ -84,8 +84,11 @@ declare -p WRAPPER_PROGRAMS >/dev/null 2>&1 || WRAPPER_PROGRAMS=(node bun deno n
 #   task   what a detected agent is working on ("screensaver-timeout"). Every
 #          supported agent already publishes a short summary of the current
 #          task as its terminal title, so nothing here invents a name: the
-#          title is only condensed to a label by ar_condense_title. Renders
-#          nothing on other tabs, or when the title is missing or unusable.
+#          title is only condensed to a label by ar_condense_title. Where
+#          there is no task -- another kind of tab, or a missing or unusable
+#          title -- it yields its place to the name text (unless a name part
+#          is listed on its own), so (icon task) reads glyph+task on agent
+#          tabs and glyph+name everywhere else.
 #
 # (name) is the default and the old behavior; (icon name) is the old icons
 # look. Text parts join with ":", in the order written: (name task) reads
@@ -376,12 +379,15 @@ ar_format() {
     fi
   fi
   # A fallback glyph that would stand alone says nothing about the program
-  # (rg -> "rg", not "?"; alongside text it still shows, "? rg"). $icfb is the
-  # provenance recorded at lookup time, so a mapped glyph that happens to equal
-  # ICON_FALLBACK is never suppressed, and a task that equals it is never
-  # replaced.
-  if [ "$icfb" = "1" ] && [ -n "$ic" ] && [ -z "$ctask" ] &&
-    ! ar_in_list name "${plist[@]}"; then
+  # (rg -> "rg", not "?"; alongside text it still shows, "? rg"). Text renders
+  # whenever a name or task part is listed -- the task yields its place to the
+  # name below when it has nothing to show -- so a lone glyph is only possible
+  # under a pure (icon) list, and that is the condition. $icfb is the
+  # provenance recorded at lookup time, so a mapped glyph that happens to
+  # equal ICON_FALLBACK is never suppressed, and a task that equals it is
+  # never replaced.
+  if [ "$icfb" = "1" ] && [ -n "$ic" ] &&
+    ! ar_in_list name "${plist[@]}" && ! ar_in_list task "${plist[@]}"; then
     ic=""
   fi
 
@@ -392,7 +398,18 @@ ar_format() {
     case "$part" in
     icon) ptext=$ic ;;
     name) ptext=$name ;;
-    task) ptext=$ctask ;;
+    task)
+      ptext=$ctask
+      # A task with nothing to show yields its place to the name text (unless
+      # a name part is listed on its own), so (icon task) reads glyph+task on
+      # a tab with a task and glyph+name on every other tab, rather than
+      # leaving plain tabs a bare glyph. On an agent pane $name is already the
+      # detected agent, so a suspended agent with an unusable title reads
+      # "<glyph> claude", never a glyph alone.
+      if [ -z "$ptext" ] && ! ar_in_list name "${plist[@]}"; then
+        ptext=$name
+      fi
+      ;;
     *) continue ;;
     esac
     [ -n "$ptext" ] || continue

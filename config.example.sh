@@ -68,9 +68,12 @@
 #   task   what a detected agent is working on: "screensaver-timeout". Every
 #          supported agent already publishes a short summary of the current
 #          task as its terminal title, so nothing is invented here: that title
-#          is only shortened to a label. Renders nothing on other tabs. Five
-#          claude tabs under (task) then read "screensaver-timeout",
-#          "nightly-ETL-job", ... instead of "claude" five times.
+#          is only shortened to a label. Where there is no task, it yields its
+#          place to the name text (unless a name part is listed on its own):
+#          (icon task) reads glyph+task on agent tabs, glyph+name everywhere
+#          else. Five claude tabs under (task) then read
+#          "screensaver-timeout", "nightly-ETL-job", ... instead of "claude"
+#          five times.
 #
 # (name) is the default and the old behavior; (icon name) is the old icons
 # look. Text parts join with ":", in the order written: (name task) reads

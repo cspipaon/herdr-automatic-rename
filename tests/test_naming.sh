@@ -373,16 +373,22 @@ check "HIDE_SHELL spares a rendered task" "screensaver-timeout" \
   "$(HIDE_SHELL=1 TAB_LABEL=task ar_format 'zsh' 'zsh' "$_title")"
 # The icon stays keyed to the agent, not the label text: (icon task) carries
 # the agent's glyph before the task, and (icon) alone shows the glyph as for
-# any program, title or not. On a plain tab, (icon task) shows the known glyph
-# alone, and keeps the name when only the fallback would remain.
+# any program, title or not. A task with nothing to show yields its place to
+# the name, so on a plain tab (icon task) reads like (icon name), and a
+# suspended agent with an unusable title reads the agent's name, never a bare
+# glyph.
 check "(icon task) carries the agent's glyph" "$g_agent auth-flow" \
   "$(TAB_LABEL='icon task' ar_format 'claude' 'claude' 'Fix the auth flow')"
 check "(icon) shows the glyph alone, title or not" "$g_agent" \
   "$(TAB_LABEL=icon ar_format 'claude' 'claude' 'Fix the auth flow')"
-check "(icon task) on a plain tab shows the known glyph" "$g_nvim" \
+check "(icon task) on a plain tab keeps glyph and name" "$g_nvim nvim" \
   "$(TAB_LABEL='icon task' ar_format 'nvim' 'nvim')"
-check "(icon task) on an unknown plain tab keeps the name" "rg" \
+check "(icon task) on an unknown plain tab reads like (icon name)" "? rg" \
   "$(TAB_LABEL='icon task' ar_format 'rg' 'rg')"
+check "the name stands in for an unusable title" "$g_agent claude" \
+  "$(TAB_LABEL='icon task' ar_format 'zsh' 'zsh' 'to the and of' 'claude')"
+check "no stand-in when a name part is listed" "$g_agent claude" \
+  "$(TAB_LABEL='icon name task' ar_format 'zsh' 'zsh' 'to the and of' 'claude')"
 # The lone-fallback rule keys on PROVENANCE recorded at lookup time, not on
 # glyph or label values: a task equal to ICON_FALLBACK survives, a MAPPED
 # glyph equal to ICON_FALLBACK survives, and fallback icons cannot slip a
