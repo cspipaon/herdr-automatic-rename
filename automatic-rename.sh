@@ -407,14 +407,21 @@ ar_pane_agent_title() {
         #   - the working directory: bare (codex titles a pane
         #     "herdr-automatic-rename", the repo name the workspace label
         #     already says) or as a path, "~"-abbreviated or not;
-        #   - a shell prompt, "user@host:...". herdr detects an agent the
-        #     moment one runs anywhere in the pane -- including a headless
-        #     subprocess some other program spawned -- while the pane title is
-        #     still whatever the shell last wrote there.
+        #   - a shell prompt, "user@host:" followed by a path (or nothing).
+        #     herdr detects an agent the moment one runs anywhere in the pane
+        #     -- including a headless subprocess some other program spawned --
+        #     while the pane title is still whatever the shell last wrote
+        #     there. Requiring the path keeps the rule off a real task that
+        #     merely opens with an email-like token ("alice@example.com:
+        #     investigate auth failures" is a task).
+        # A trailing slash is stripped before the path comparison, so
+        # "/home/u/code/repo/" and "~/code/repo/" count the same as their
+        # slashless twins.
+        | ($t | sub("/$"; "")) as $tn
         | ([($cw | split("/") | last), ($fw | split("/") | last), $cw, $fw]
            + (if $home != "" and ($cw | startswith($home)) then ["~" + $cw[($home | length):]] else [] end)
            + (if $home != "" and ($fw | startswith($home)) then ["~" + $fw[($home | length):]] else [] end)) as $notask
-        | if $t == "" or ($notask | index($t)) or ($t | test("^[^@[:space:]]+@[^:[:space:]]+:")) then "" else $t end
+        | if $t == "" or ($notask | index($tn)) or ($t | test("^[^@[:space:]]+@[^:[:space:]]+:(~|/|$)")) then "" else $t end
       end
   ' 2>/dev/null
 }
