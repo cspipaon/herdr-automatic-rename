@@ -73,23 +73,27 @@ declare -p IGNORED_PROGRAMS >/dev/null 2>&1 || IGNORED_PROGRAMS=(ls eza ll la cd
 declare -p WRAPPER_PROGRAMS >/dev/null 2>&1 || WRAPPER_PROGRAMS=(node bun deno npx bunx npm pnpm yarn
   python python3 uv uvx pipx ruby)
 
-# What an agent tab shows: an ordered list of parts, joined by ":".
+# What a tab shows: an ordered list of parts, one model for every tab.
 #
-#   name   the agent's own name ("claude"), through its PROGRAM_ALIASES alias
-#          when one is set.
-#   task   what the agent is working on ("screensaver-timeout"). Every
+#   icon   a Nerd Font glyph for the program (icons.sh picks which; needs a
+#          Nerd Font). Joined to its neighbors by a space. Never on a shell
+#          label.
+#   name   the tab's text as ever: the program (through its PROGRAM_ALIASES
+#          alias when one is set), its command line under SHOW_PROGRAM_ARGS,
+#          or the shell's name.
+#   task   what a detected agent is working on ("screensaver-timeout"). Every
 #          supported agent already publishes a short summary of the current
 #          task as its terminal title, so nothing here invents a name: the
-#          title is only condensed to a label by ar_condense_title.
+#          title is only condensed to a label by ar_condense_title. Renders
+#          nothing on other tabs, or when the title is missing or unusable.
 #
-# (name) is the default and the old behavior. (task) names the tab after the
-# work alone. (name task) shows both, "claude:auth-flow", and the order is
-# honored: (task name) reads "auth-flow:claude". A single part may be written
-# without parens (AGENT_TAB_NAMES=task); unknown parts are ignored. Whenever
-# the title is missing or unusable, the tab falls back to the name part's text,
-# so an alias renames the name wherever it appears and never turns the task
-# display off.
-declare -p AGENT_TAB_NAMES >/dev/null 2>&1 || AGENT_TAB_NAMES=(name)
+# (name) is the default and the old behavior; (icon name) is the old icons
+# look. Text parts join with ":", in the order written: (name task) reads
+# "claude:auth-flow" and (task name) flips it. A label that composes to
+# nothing falls back to the name text, so no tab is left unnamed and an alias
+# never turns the task display off. May be written as an array or as one
+# space-separated string (TAB_LABEL="icon name"); unknown parts are ignored.
+declare -p TAB_LABEL >/dev/null 2>&1 || TAB_LABEL=(name)
 
 # Leading imperative verbs dropped from a title. An agent summary is written as
 # "<verb> <subject>", and the verb is the one word that says nothing about which
@@ -247,27 +251,29 @@ ar_condense_title() {
 #   program == "" means a bare prompt (name by the shell). <agent> is the agent
 #   herdr detected in the pane, when the engine looked one up.
 ar_format() {
-  local prog=$1 cmdline=$2 title=${3:-} agent=${4:-} name="" ic aliased is_shell=0 condensed="" prefix="" rsv="" tic="" ctask="" part
-  local -a plist=()
-  # Normalize the parts: order kept, duplicates collapsed (a doubled part would
-  # render twice while the budget charged it once), unknown names dropped.
-  for part in "${AGENT_TAB_NAMES[@]}"; do
+  local prog=$1 cmdline=$2 title=${3:-} agent=${4:-} name="" ic="" icfb=0 aliased is_shell=0 prefix="" rsv="" ctask="" part ptext out="" prev=""
+  local -a plist=() praw
+  # The parts may arrive as an array or as one space-separated string; read -a
+  # normalizes both without glob expansion. Order is kept, duplicates collapse
+  # (a doubled part would render twice while the budget charged it once), and
+  # unknown parts drop here.
+  IFS=' ' read -r -a praw <<<"${TAB_LABEL[*]}"
+  for part in "${praw[@]}"; do
     case "$part" in
-    name | task) ar_in_list "$part" "${plist[@]}" || plist+=("$part") ;;
+    icon | name | task) ar_in_list "$part" "${plist[@]}" || plist+=("$part") ;;
     esac
   done
   aliased=$(ar_alias "$prog")
-  # A title arrives only for a pane herdr has detected an agent in: deciding that
-  # is a herdr fact, so the engine does it (ar_pane_agent_title) and this stays a
-  # string function. An empty title is every other tab, and costs nothing here.
-  # AGENT_TAB_NAMES lists the parts such a tab shows; an alias renames the
-  # agent's NAME wherever it appears, and never turns the task display off.
+  # The task part. A title arrives only for a pane herdr has detected an agent
+  # in: deciding that is a herdr fact, so the engine does it
+  # (ar_pane_agent_title) and this stays a string function. An empty title is
+  # every other tab, and costs nothing here.
   if [ -n "$prog" ] && ar_in_list task "${plist[@]}" &&
     { [ -n "$title" ] || [ -n "$agent" ]; }; then
-    # The name part, its alias and the fallback key to the DETECTED agent when
-    # the engine supplies one: a suspended agent's pane is still that agent's
-    # pane, and the shell or quick command holding its foreground must not lend
-    # the label its identity.
+    # The name part, its alias, the glyph and the fallback key to the DETECTED
+    # agent when the engine supplies one: a suspended agent's pane is still
+    # that agent's pane, and the shell or quick command holding its foreground
+    # must not lend the label its identity.
     if [ -n "$agent" ]; then
       prefix=$(ar_alias "$agent")
       prefix=${prefix:-$agent}
@@ -277,56 +283,37 @@ ar_format() {
     if [ -n "$title" ]; then
       # Everything that will share the label is priced out of MAX_TASK_LEN
       # before the task is condensed into the rest: the name part and its ":"
-      # joint, and the glyph and its space when icons show text alongside. The
+      # joint, and the glyph and its space when the icon part is listed. The
       # pricing happens inside ar_condense_title, in codepoints, so a
       # non-ASCII alias or a multibyte glyph is not overcharged by bash's byte
       # counting. A budget the parts exhaust, like a title that condenses to
       # nothing, leaves $ctask empty and the tab falls back below -- never a
       # dangling joint, never a mid-word cut.
       rsv=""
-      if [ "${ICONS_ENABLED:-0}" = "1" ]; then
-        # Reserve the glyph exactly when the formatter will show it beside the
-        # text: every style except "icon" (glyph only) and "name" (no glyph),
-        # matching the formatter's catch-all for unknown styles.
-        case "${ICON_STYLE:-name_and_icon}" in
-        icon | name) : ;;
-        *)
-          tic=$(ar_icon "${agent:-$prog}")
-          [ -z "$tic" ] || rsv="$tic "
-          ;;
-        esac
+      if ar_in_list icon "${plist[@]}"; then
+        # Provenance, not value comparison: ask the map alone first, so a real
+        # glyph that happens to equal ICON_FALLBACK is never mistaken for the
+        # fallback later. The fallback fills in only when ICON_MAP genuinely
+        # has no say -- an explicit empty override ("nvim=") suppresses the
+        # icon and must stay suppressed.
+        ic=$(ICON_FALLBACK='' ar_icon "${agent:-$prog}")
+        if [ -z "$ic" ] && ! ar_icon_mapped "${agent:-$prog}"; then
+          ic=$ICON_FALLBACK
+          icfb=1
+        fi
+        [ -z "$ic" ] || rsv="$ic "
       fi
       if ar_in_list name "${plist[@]}"; then
         rsv="$rsv$prefix:"
       fi
       ctask=$(ar_condense_title "$title" "$rsv")
     fi
-    if [ -n "$ctask" ]; then
-      # Parts render in the order the config wrote them; unknown parts add
-      # nothing.
-      for part in "${plist[@]}"; do
-        case "$part" in
-        name) condensed="${condensed:+$condensed:}$prefix" ;;
-        task) condensed="${condensed:+$condensed:}$ctask" ;;
-        esac
-      done
-    elif [ -n "$agent" ]; then
-      # No usable task, but herdr knows whose pane this is: fall back to the
-      # agent's name, not the foreground's.
-      condensed=$prefix
-    fi
+
   fi
+  # The name part: the tab's text exactly as it has always been computed.
   if [ -z "$prog" ]; then
     name=$SHELL_NAME
     is_shell=1
-  elif [ -n "$condensed" ]; then
-    # An agent tab says what the agent is working on. A title that condenses to
-    # nothing (all filler, or absent) leaves this empty and falls through to the
-    # agent's own name below -- through the alias when one is set -- so the tab
-    # is never left unnamed. Above the alias branch on purpose: under "task" the
-    # task outranks the hand-set name, and under (name task) the label
-    # already carries it.
-    name=$condensed
   elif [ -n "$aliased" ]; then
     name=$aliased # user rename (PROGRAM_ALIASES) wins
   elif ar_in_list "$prog" "${SHELLS[@]}"; then
@@ -346,54 +333,95 @@ ar_format() {
     name="$(ar_subst "$prog")"
   fi
 
+  # Key the whole label to the DETECTED agent when the engine supplied one and
+  # a task part is in play: the name text, the alias and the fallback are the
+  # agent's, not the foreground's, and the label stops counting as a shell.
+  if [ -n "$agent" ] && ar_in_list task "${plist[@]}"; then
+    name=$prefix
+    is_shell=0
+  fi
+
   # HIDE_SHELL: drop the shell label entirely and let herdr number the tab. An
   # explicit PROGRAM_ALIASES entry for a shell (e.g. "fish=sh") is a name the
   # user asked for by hand, so it survives; nothing else about a shell tab does
   # -- bare prompt, an explicit SHELLS entry, an IGNORED_PROGRAMS command, or
-  # the login shell itself.
-  if [ "${HIDE_SHELL:-0}" = "1" ] && [ "$is_shell" = "1" ]; then
+  # the login shell itself. A rendered task keeps the tab labeled, though: the
+  # pane holds a detected agent, and its work is not a shell label.
+  if [ "${HIDE_SHELL:-0}" = "1" ] && [ "$is_shell" = "1" ] && [ -z "$ctask" ]; then
     printf ''
     return 0
   fi
 
-  # Icons annotate the program the tab is named after. Skip them whenever the
+  # The icon part annotates the program the tab is named after -- or the
+  # DETECTED agent, whatever holds the pane's foreground. Skip it whenever the
   # label is a shell name: precmd names an idle prompt via ar_format "" "",
-  # which `[ -n "$prog" ]` denies an icon, so a glyph here would flip the label
+  # which `[ -n "$prog" ]` denies a glyph, so one here would flip the label
   # between "zsh" and "<glyph> zsh" on every reconcile. is_shell covers the
   # bare prompt, the fixed SHELLS six, IGNORED_PROGRAMS, and the login shell
   # itself (SHELL_NAME may sit outside SHELLS -- nu, tcsh, elvish -- yet still
   # hit the map, or the fallback, at reconcile); comparing against SHELL_NAME
   # additionally keeps a cmdline- or alias-derived label of the same text plain.
-  if [ "${ICONS_ENABLED:-0}" = "1" ] && [ -n "$prog" ] && [ "$is_shell" = "0" ] &&
+  # (The task block above may have fetched the glyph already, for the budget.)
+  if [ -z "$ic" ] && ar_in_list icon "${plist[@]}" && [ -n "$prog" ] && [ "$is_shell" = "0" ] &&
     [ "$name" != "$SHELL_NAME" ]; then
-    # A label keyed to a detected agent gets the agent's glyph, whatever holds
-    # the pane's foreground.
-    ic=$(ar_icon "${agent:-$prog}")
-    # A lone fallback glyph says nothing about the program, so under
-    # ICON_STYLE=icon it is skipped and the plain name is kept: rg -> "rg",
-    # not "?". (name_and_icon still shows "? rg".)
-    if [ "${ICON_STYLE:-name_and_icon}" = "icon" ] && [ -n "$ic" ] && [ "$ic" = "$ICON_FALLBACK" ]; then
-      ic=""
-    fi
-    if [ -n "$ic" ]; then
-      case "${ICON_STYLE:-name_and_icon}" in
-      icon) name=$ic ;;                      # icon only
-      name) : ;;                             # name only (icon suppressed)
-      name_and_icon | *) name="$ic $name" ;; # icon + name (default)
-      esac
+    # Provenance, not value comparison: ask the map alone first, so a real
+    # glyph that happens to equal ICON_FALLBACK is never mistaken for the
+    # fallback below. The fallback fills in only when ICON_MAP genuinely has
+    # no say -- an explicit empty override ("nvim=") suppresses the icon and
+    # must stay suppressed.
+    ic=$(ICON_FALLBACK='' ar_icon "${agent:-$prog}")
+    if [ -z "$ic" ] && ! ar_icon_mapped "${agent:-$prog}"; then
+      ic=$ICON_FALLBACK
+      icfb=1
     fi
   fi
+  # A fallback glyph that would stand alone says nothing about the program
+  # (rg -> "rg", not "?"; alongside text it still shows, "? rg"). $icfb is the
+  # provenance recorded at lookup time, so a mapped glyph that happens to equal
+  # ICON_FALLBACK is never suppressed, and a task that equals it is never
+  # replaced.
+  if [ "$icfb" = "1" ] && [ -n "$ic" ] && [ -z "$ctask" ] &&
+    ! ar_in_list name "${plist[@]}"; then
+    ic=""
+  fi
+
+  # Assemble the parts in the order the config wrote them; unknown parts add
+  # nothing. The icon joins its neighbors with a space, text parts join with
+  # ":".
+  for part in "${plist[@]}"; do
+    case "$part" in
+    icon) ptext=$ic ;;
+    name) ptext=$name ;;
+    task) ptext=$ctask ;;
+    *) continue ;;
+    esac
+    [ -n "$ptext" ] || continue
+    if [ -z "$out" ]; then
+      out=$ptext
+    elif [ "$part" = "icon" ] || [ "$prev" = "icon" ]; then
+      out="$out $ptext"
+    else
+      out="$out:$ptext"
+    fi
+    prev=$part
+  done
+  # A label that composed to nothing (say, (task) on a tab with no task) must
+  # not leave the tab blank: fall back to the name text.
+  if [ -z "$out" ]; then
+    out=$name
+  fi
+  name=$out
   # Truncate by Unicode codepoint, not byte. bash's ${#name} / ${name:0:$max}
   # count bytes under a C/POSIX locale (herdr may launch plugins with no LC_*),
   # which would slice a multibyte char in half and emit mojibake. jq (already a
   # hard dependency of this plugin) always reads input as UTF-8, so it slices on
   # codepoint boundaries regardless of the ambient locale; fall back to the byte
   # cut only if jq is somehow unavailable.
-  # A task label was built to the MAX_TASK_LEN budget, so it is measured against
-  # that budget here too; every other label keeps MAX_NAME_LEN. ($condensed is
-  # only ever non-empty when it became the label above.)
+  # A label carrying a task was built to the MAX_TASK_LEN budget, so it is
+  # measured against that budget here too; every other label keeps MAX_NAME_LEN.
+  # ($ctask is only ever non-empty when the parts rendered it.)
   local max=${MAX_NAME_LEN:-20}
-  [ -z "$condensed" ] || max=${MAX_TASK_LEN:-30}
+  [ -z "$ctask" ] || max=${MAX_TASK_LEN:-30}
   if [ "${#name}" -gt "$max" ]; then
     local truncated
     truncated=$(printf '%s' "$name" | jq -Rrs --argjson n "$max" '.[:$n]' 2>/dev/null || printf '')

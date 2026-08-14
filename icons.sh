@@ -16,14 +16,14 @@
 # The glyphs below are literal Private Use Area characters and render as blank
 # boxes without a Nerd Font installed. They also went missing once: every arm
 # of the old map shipped as `printf ''` from naming.sh's first commit through
-# v0.2.1, which made ICONS_ENABLED=1 a silent no-op (issue #3). Each arm
+# v0.2.1, which made enabling icons a silent no-op (issue #3). Each arm
 # carries its codepoint in a comment so a stripped glyph can be restored, and
 # tests/test_naming.sh asserts the exact bytes, so the same loss fails the
 # suite instead of passing quietly.
 
 # ---- configurable knobs (override in config.sh / $HERDR_AUTOMATIC_RENAME_CONFIG) ----
-: "${ICONS_ENABLED:=0}"          # prepend a Nerd Font glyph (needs a Nerd Font)
-: "${ICON_STYLE:=name_and_icon}" # name_and_icon (icon+name) | name (name only) | icon (icon only)
+# Whether and where a glyph appears is TAB_LABEL's call (its "icon" part, see
+# naming.sh); the knobs here pick WHICH glyph.
 
 # Glyph shown when a program is missing from the map, like upstream's
 # fallback-icon. An EMPTY string turns the fallback off (unknown programs get
@@ -34,6 +34,21 @@ if [ -z "${ICON_FALLBACK+x}" ]; then ICON_FALLBACK='?'; fi
 # Per-program icon overrides: "<program>=<glyph>" pairs, checked before the
 # builtin map. Set this in config.sh, e.g. ICON_MAP=("nvim=...").
 declare -p ICON_MAP >/dev/null 2>&1 || ICON_MAP=()
+
+# ar_icon_mapped <program> -> 0 when ICON_MAP carries an entry for it, even an
+# empty one. An explicit "<program>=" is the user suppressing that icon, and a
+# provenance-aware caller (ar_format) must not refill it with the fallback --
+# which it could not tell apart from "unmapped" by ar_icon's return value alone.
+ar_icon_mapped() {
+  local n=$1 pair
+  [ -n "$n" ] || return 1
+  for pair in "${ICON_MAP[@]}"; do
+    case "$pair" in
+    "$n="*) return 0 ;;
+    esac
+  done
+  return 1
+}
 
 # ar_icon <program> -> a Nerd Font glyph, or $ICON_FALLBACK ("" when disabled).
 # Lookup order: user ICON_MAP override -> builtin map -> fallback. An empty

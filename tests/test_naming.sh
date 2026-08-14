@@ -59,7 +59,7 @@ check "multibyte truncation is clean" "ünïcödé" \
 # Expected glyphs are built from explicit UTF-8 byte escapes rather than pasted
 # literals: bash 3.2 has no $'\uXXXX', and the Private Use Area codepoints these
 # tests assert on are precisely what an editor or a copy-paste silently ate once
-# before (the old ar_icon shipped with every arm returning "", so ICONS_ENABLED
+# before (the old ar_icon shipped with every arm returning "", so enabling icons
 # was a no-op through v0.2.1). Byte escapes cannot be eaten that way, so these
 # tests still fail loudly if the glyphs ever vanish from icons.sh again.
 g_nvim=$(printf '\xee\x9a\xae')      # U+E6AE nf-custom-neovim
@@ -120,71 +120,70 @@ check "ICON_MAP covers unknown program" "$g_agent" "$(
   ar_icon nosuchprog
 )"
 
-# ICON_STYLE wiring, end to end through ar_format.
-check "icon style default is icon+name" "$g_nvim nvim" \
-  "$(ICONS_ENABLED=1 ar_format 'nvim' 'nvim')"
-check "icon style 'name_and_icon' is icon+name" "$g_git git" \
-  "$(ICONS_ENABLED=1 ICON_STYLE=name_and_icon ar_format 'git' 'git status')"
-check "icon style 'icon' is glyph only" "$g_nvim" \
-  "$(ICONS_ENABLED=1 ICON_STYLE=icon ar_format 'nvim' 'nvim')"
-check "icon style 'name' suppresses glyph" "nvim" \
-  "$(ICONS_ENABLED=1 ICON_STYLE=name ar_format 'nvim' 'nvim')"
+# The icon part, end to end through ar_format.
+check "(icon name) is glyph + name" "$g_nvim nvim" \
+  "$(TAB_LABEL='icon name' ar_format 'nvim' 'nvim')"
+check "(icon name) joins with a space" "$g_git git" \
+  "$(TAB_LABEL='icon name' ar_format 'git' 'git status')"
+check "(icon) is glyph only" "$g_nvim" \
+  "$(TAB_LABEL=icon ar_format 'nvim' 'nvim')"
+check "a list without icon shows no glyph" "nvim" \
+  "$(TAB_LABEL=name ar_format 'nvim' 'nvim')"
 
-# Icons off (the default) never prepends a glyph, even for a known program.
-check "icons off -> no glyph" "nvim" "$(ar_format 'nvim' 'nvim')"
-# Unknown program with icons on and the fallback off: plain name, no glyph.
-check "icons on, fallback off, unknown -> plain name" "nosuchprog" \
-  "$(ICONS_ENABLED=1 ICON_FALLBACK='' SHOW_PROGRAM_ARGS=0 ar_format 'nosuchprog' 'nosuchprog -d 5')"
-# Unknown program with icons on: fallback glyph + name.
-check "icons on, unknown -> fallback glyph + name" "? nosuchprog" \
-  "$(ICONS_ENABLED=1 SHOW_PROGRAM_ARGS=0 ar_format 'nosuchprog' 'nosuchprog -d 5')"
+# The default (name) never prepends a glyph, even for a known program.
+check "default -> no glyph" "nvim" "$(ar_format 'nvim' 'nvim')"
+# Unknown program with the icon part and the fallback off: plain name, no glyph.
+check "icon part, fallback off, unknown -> plain name" "nosuchprog" \
+  "$(TAB_LABEL='icon name' ICON_FALLBACK='' SHOW_PROGRAM_ARGS=0 ar_format 'nosuchprog' 'nosuchprog -d 5')"
+# Unknown program with the icon part: fallback glyph + name.
+check "icon part, unknown -> fallback glyph + name" "? nosuchprog" \
+  "$(TAB_LABEL='icon name' SHOW_PROGRAM_ARGS=0 ar_format 'nosuchprog' 'nosuchprog -d 5')"
 # An ignored program keeps showing the shell, so it gets no icon either --
 # even though sudo has a real glyph in the map and ls would hit the fallback.
-check "icons on, ignored program -> shell name, no icon" "zsh" \
-  "$(ICONS_ENABLED=1 ar_format 'sudo' 'sudo apt update')"
+check "icon part, ignored program -> shell name, no icon" "zsh" \
+  "$(TAB_LABEL='icon name' ar_format 'sudo' 'sudo apt update')"
 # Shells get no icon even when the map knows them (zsh is in icons.sh, dash is
 # not): precmd names an idle prompt via ar_format "" "", which `[ -n "$prog" ]`
 # denies an icon, so a shell glyph here would flip the label between "zsh" and
 # "<glyph> zsh" on every reconcile. The last check pins both paths to the same
 # string.
-check "icons on, shell program -> shell name, no icon" "zsh" \
-  "$(ICONS_ENABLED=1 ar_format 'zsh' '-zsh')"
-check "icons on, shell missing from map -> no fallback glyph" "dash" \
-  "$(ICONS_ENABLED=1 ar_format 'dash' '')"
-check "idle prompt and shell reconcile agree with icons on" \
-  "$(ICONS_ENABLED=1 ar_format '' '')" \
-  "$(ICONS_ENABLED=1 ar_format "$SHELL_NAME" '')"
+check "icon part, shell program -> shell name, no icon" "zsh" \
+  "$(TAB_LABEL='icon name' ar_format 'zsh' '-zsh')"
+check "icon part, shell missing from map -> no fallback glyph" "dash" \
+  "$(TAB_LABEL='icon name' ar_format 'dash' '')"
+check "idle prompt and shell reconcile agree with the icon part" \
+  "$(TAB_LABEL='icon name' ar_format '' '')" \
+  "$(TAB_LABEL='icon name' ar_format "$SHELL_NAME" '')"
 # SHELL_NAME follows the user's real login shell, which can sit outside the
 # fixed SHELLS six (nu, tcsh, elvish, ...). prog == SHELL_NAME is its own
 # shell arm, so a reconcile reads the bare name (never the cmdline, even with
 # SHOW_PROGRAM_ARGS=1 -- "-elvish" would dodge a name-based comparison) and
 # gets no glyph or fallback, keeping it equal to the idle prompt.
 check "odd login shell (elvish) gets no icon" "elvish" \
-  "$(SHELL_NAME=elvish ICONS_ENABLED=1 ar_format 'elvish' '')"
+  "$(SHELL_NAME=elvish TAB_LABEL='icon name' ar_format 'elvish' '')"
 check "odd login shell outside map (nu) -> no fallback glyph" "nu" \
-  "$(SHELL_NAME=nu ICONS_ENABLED=1 ar_format 'nu' '')"
+  "$(SHELL_NAME=nu TAB_LABEL='icon name' ar_format 'nu' '')"
 check "odd login shell with args on -> shell name, no icon" "elvish" \
-  "$(SHELL_NAME=elvish ICONS_ENABLED=1 SHOW_PROGRAM_ARGS=1 ar_format 'elvish' '-elvish')"
+  "$(SHELL_NAME=elvish TAB_LABEL='icon name' SHOW_PROGRAM_ARGS=1 ar_format 'elvish' '-elvish')"
 check "idle and odd-shell reconcile agree with args on" \
-  "$(SHELL_NAME=elvish ICONS_ENABLED=1 SHOW_PROGRAM_ARGS=1 ar_format '' '')" \
-  "$(SHELL_NAME=elvish ICONS_ENABLED=1 SHOW_PROGRAM_ARGS=1 ar_format 'elvish' '-elvish')"
-# Under ICON_STYLE=icon a lone fallback glyph would be the whole label, so it
-# is suppressed and the plain name kept; name_and_icon still shows "? name"
-# (pinned above).
-check "icon style 'icon' with unknown program -> plain name" "nosuchprog" \
-  "$(ICONS_ENABLED=1 ICON_STYLE=icon SHOW_PROGRAM_ARGS=0 ar_format 'nosuchprog' 'nosuchprog -d 5')"
+  "$(SHELL_NAME=elvish TAB_LABEL='icon name' SHOW_PROGRAM_ARGS=1 ar_format '' '')" \
+  "$(SHELL_NAME=elvish TAB_LABEL='icon name' SHOW_PROGRAM_ARGS=1 ar_format 'elvish' '-elvish')"
+# Under (icon) a lone fallback glyph would be the whole label, so it falls
+# back to the plain name; (icon name) still shows "? name" (pinned above).
+check "(icon) with unknown program -> plain name" "nosuchprog" \
+  "$(TAB_LABEL=icon SHOW_PROGRAM_ARGS=0 ar_format 'nosuchprog' 'nosuchprog -d 5')"
 # ICON_MAP works end to end through ar_format.
 check "ICON_MAP override end to end" "$g_agent nosuchprog" \
   "$(
     ICON_MAP=("nosuchprog=${g_agent}")
-    ICONS_ENABLED=1 SHOW_PROGRAM_ARGS=0 ar_format 'nosuchprog' 'nosuchprog -x'
+    TAB_LABEL='icon name' SHOW_PROGRAM_ARGS=0 ar_format 'nosuchprog' 'nosuchprog -x'
   )"
 
 # A glyph is one codepoint, so "<glyph> <name>" must be truncated by codepoint,
 # never mid-byte. node is not name-only, so its cmdline is long enough to cut:
 # MAX_NAME_LEN=6 keeps the glyph, the space, and 4 chars of the name.
 check "icon+name truncates on codepoint boundary" "$g_node node" \
-  "$(ICONS_ENABLED=1 MAX_NAME_LEN=6 SHOW_PROGRAM_ARGS=1 ar_format 'node' 'nodeandmore')"
+  "$(TAB_LABEL='icon name' MAX_NAME_LEN=6 SHOW_PROGRAM_ARGS=1 ar_format 'node' 'nodeandmore')"
 
 # ---- HIDE_SHELL: every shell-ish case names the tab nothing (issue #5) ----
 # The empty label is what makes herdr fall back to rendering its own tab number,
@@ -294,117 +293,147 @@ check "a mid-title pipe separates" "parser-fix" \
 # A title that is nothing but a badge leaves the tab to fall back.
 check "a badge alone condenses to nothing" "" "$(ar_condense_title 'OC |')"
 
-# ---- AGENT_TAB_NAMES: wiring the condensed title into ar_format ----
+# ---- TAB_LABEL: wiring the condensed title into ar_format ----
 _title='Adjust screensaver timeout on the Ubuntu box'
 # "name" is the default, and is the old behavior: an agent tab reads its name.
 check "name is the default -> agent name" "claude" "$(ar_format 'claude' 'claude' "$_title")"
 got=$(bash -c 'SHELL_NAME=zsh; . "$1"; ar_format claude claude "Adjust screensaver timeout on the Ubuntu box"' _ "$here/../naming.sh")
-check "AGENT_TAB_NAMES defaults to name" "claude" "$got"
+check "TAB_LABEL defaults to name" "claude" "$got"
 check "task -> agent tab named after the task" "screensaver-timeout" \
-  "$(AGENT_TAB_NAMES=task ar_format 'claude' 'claude' "$_title")"
+  "$(TAB_LABEL=task ar_format 'claude' 'claude' "$_title")"
 # Which panes get a title is herdr's call, made in the engine by
 # ar_pane_agent_title, so this function does not test the program: whatever it
 # is named, a tab handed a title is named from it. codex reports its program as
 # `node`, which is exactly why the program name cannot be the gate (scenario 19
 # in test_reconcile.sh covers the engine side).
 check "the program name is not the gate" "screensaver-timeout" \
-  "$(AGENT_TAB_NAMES=task ar_format 'node' 'node' "$_title")"
+  "$(TAB_LABEL=task ar_format 'node' 'node' "$_title")"
 check "bare prompt ignores the title" "zsh" \
-  "$(AGENT_TAB_NAMES=task ar_format '' '' "$_title")"
+  "$(TAB_LABEL=task ar_format '' '' "$_title")"
 # Falling back keeps a tab named rather than blank whenever the title yields
 # nothing: absent, or entirely verb and filler.
 check "no title -> falls back to agent name" "claude" \
-  "$(AGENT_TAB_NAMES=task ar_format 'claude' 'claude' '')"
+  "$(TAB_LABEL=task ar_format 'claude' 'claude' '')"
 check "unusable title -> falls back to agent name" "claude" \
-  "$(AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'to the and of')"
+  "$(TAB_LABEL=task ar_format 'claude' 'claude' 'to the and of')"
 # An alias renames the agent's NAME wherever the mode puts it, and never turns
 # the task display off. Under "task" the name appears only in the fallback.
 check "task outranks an alias" "screensaver-timeout" \
   "$(
     PROGRAM_ALIASES=("claude=cc")
-    AGENT_TAB_NAMES=task ar_format 'claude' 'claude' "$_title"
+    TAB_LABEL=task ar_format 'claude' 'claude' "$_title"
   )"
 check "the alias names the no-title fallback" "cc" \
   "$(
     PROGRAM_ALIASES=("claude=cc")
-    AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'to the and of'
+    TAB_LABEL=task ar_format 'claude' 'claude' 'to the and of'
   )"
 # While herdr detects an agent in the pane, the task also outranks the shell
 # and quick-command fallbacks for that pane: the label stays on the task while
 # an `ls` or a bare prompt (say, a suspended agent) holds the foreground.
 check "a quick command keeps the agent's task" "screensaver-timeout" \
-  "$(AGENT_TAB_NAMES=task ar_format 'ls' 'ls' "$_title")"
+  "$(TAB_LABEL=task ar_format 'ls' 'ls' "$_title")"
 check "a shell prompt in the pane keeps the task" "screensaver-timeout" \
-  "$(AGENT_TAB_NAMES=task ar_format 'zsh' 'zsh' "$_title")"
+  "$(TAB_LABEL=task ar_format 'zsh' 'zsh' "$_title")"
 # The engine hands ar_format the DETECTED agent (4th argument) alongside the
 # title; the name part, its alias, the glyph and the no-title fallback then key
 # to the agent, not to whatever holds the pane's foreground -- a suspended
 # agent's shell prompt stays that agent's tab.
 check "the agent, not the foreground, owns the task" "claude:screensaver" \
-  "$(
-    AGENT_TAB_NAMES=(name task)
-    ar_format 'zsh' 'zsh' "$_title" 'claude'
-  )"
+  "$(TAB_LABEL='name task' ar_format 'zsh' 'zsh' "$_title" 'claude')"
 check "the agent fallback outranks the foreground" "claude" \
-  "$(AGENT_TAB_NAMES=task ar_format 'zsh' 'zsh' 'to the and of' 'claude')"
+  "$(TAB_LABEL=task ar_format 'zsh' 'zsh' 'to the and of' 'claude')"
 check "the agent fallback goes through the alias" "cc" \
   "$(
     PROGRAM_ALIASES=("claude=cc")
-    AGENT_TAB_NAMES=task ar_format 'zsh' 'zsh' 'to the and of' 'claude'
+    TAB_LABEL=task ar_format 'zsh' 'zsh' 'to the and of' 'claude'
   )"
 check "the agent's glyph rides a suspended pane" "$g_agent screensaver" \
-  "$(ICONS_ENABLED=1 AGENT_TAB_NAMES=task ar_format 'zsh' 'zsh' "$_title" 'claude')"
+  "$(TAB_LABEL='icon task' ar_format 'zsh' 'zsh' "$_title" 'claude')"
 # The glyph and its space are priced out of the task budget before the task is
 # condensed, so the final truncation never cuts a chosen word in half...
 check "the glyph is priced out of the task budget" "$g_agent auth-flow" \
-  "$(ICONS_ENABLED=1 MAX_TASK_LEN=14 AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'Fix the auth flow sync')"
+  "$(TAB_LABEL='icon task' MAX_TASK_LEN=14 ar_format 'claude' 'claude' 'Fix the auth flow sync')"
 # ...and the pricing happens in jq, by codepoint: under a C locale bash counts
 # bytes and would charge this three-letter alias as six.
-got=$(LC_ALL=C bash -c 'SHELL_NAME=zsh; PROGRAM_ALIASES=("claude=ééé"); AGENT_TAB_NAMES=(name task); MAX_TASK_LEN=7; . "$1"; ar_format claude claude "Fix auth flow"' _ "$here/../naming.sh")
+got=$(LC_ALL=C bash -c 'SHELL_NAME=zsh; PROGRAM_ALIASES=("claude=ééé"); TAB_LABEL="name task"; MAX_TASK_LEN=7; . "$1"; ar_format claude claude "Fix auth flow"' _ "$here/../naming.sh")
 check "a non-ASCII alias is priced in codepoints" "ééé:aut" "$got"
 # Garbage-in: duplicate parts collapse to one during normalization, so the
-# budget and the rendering cannot disagree; and an unknown ICON_STYLE still
-# reserves the glyph, because the formatter's catch-all will show it.
+# budget and the rendering cannot disagree.
 check "duplicate parts collapse" "auth-flow" \
   "$(
-    AGENT_TAB_NAMES=(task task)
+    TAB_LABEL=(task task)
     MAX_TASK_LEN=12
     ar_format 'claude' 'claude' 'Fix auth flow'
   )"
-check "an unknown ICON_STYLE still reserves the glyph" "I auth-flow" \
-  "$(
-    ICON_MAP=("claude=I")
-    ICONS_ENABLED=1 ICON_STYLE=bogus MAX_TASK_LEN=14 AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'Fix the auth flow sync'
-  )"
+check "duplicate icons collapse beside a task" "? auth-flow" \
+  "$(TAB_LABEL='icon icon task' ar_format 'zsh' 'zsh' 'Fix the auth flow' 'unknown-agent')"
 # HIDE_SHELL blanks shell labels, not a rendered task in a shell-fronted pane.
 check "HIDE_SHELL spares a rendered task" "screensaver-timeout" \
-  "$(HIDE_SHELL=1 AGENT_TAB_NAMES=task ar_format 'zsh' 'zsh' "$_title")"
-# Icons stay keyed to the agent, not the label text: a task label carries the
-# agent's glyph, and ICON_STYLE=icon shows the glyph alone as for any program.
-check "a task label carries the agent's glyph" "$g_agent auth-flow" \
-  "$(ICONS_ENABLED=1 AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'Fix the auth flow')"
-check "ICON_STYLE=icon shows the glyph alone" "$g_agent" \
-  "$(ICONS_ENABLED=1 ICON_STYLE=icon AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'Fix the auth flow')"
+  "$(HIDE_SHELL=1 TAB_LABEL=task ar_format 'zsh' 'zsh' "$_title")"
+# The icon stays keyed to the agent, not the label text: (icon task) carries
+# the agent's glyph before the task, and (icon) alone shows the glyph as for
+# any program, title or not. On a plain tab, (icon task) shows the known glyph
+# alone, and keeps the name when only the fallback would remain.
+check "(icon task) carries the agent's glyph" "$g_agent auth-flow" \
+  "$(TAB_LABEL='icon task' ar_format 'claude' 'claude' 'Fix the auth flow')"
+check "(icon) shows the glyph alone, title or not" "$g_agent" \
+  "$(TAB_LABEL=icon ar_format 'claude' 'claude' 'Fix the auth flow')"
+check "(icon task) on a plain tab shows the known glyph" "$g_nvim" \
+  "$(TAB_LABEL='icon task' ar_format 'nvim' 'nvim')"
+check "(icon task) on an unknown plain tab keeps the name" "rg" \
+  "$(TAB_LABEL='icon task' ar_format 'rg' 'rg')"
+# The lone-fallback rule keys on PROVENANCE recorded at lookup time, not on
+# glyph or label values: a task equal to ICON_FALLBACK survives, a MAPPED
+# glyph equal to ICON_FALLBACK survives, and fallback icons cannot slip a
+# "? ?" through.
+check "a task equal to ICON_FALLBACK survives" "auth-flow" \
+  "$(ICON_FALLBACK='auth-flow' TAB_LABEL=task ar_format 'claude' 'claude' 'Fix the auth flow')"
+check "a mapped glyph equal to ICON_FALLBACK survives" "X" \
+  "$(
+    ICON_MAP=("mapped=X")
+    ICON_FALLBACK=X TAB_LABEL=icon ar_format 'mapped' 'mapped'
+  )"
+# ...and provenance also distinguishes "unmapped" from an EXPLICIT empty
+# override: "<program>=" is the user suppressing that icon, which must not be
+# refilled with the fallback -- next to a name, or budgeted beside a task.
+check "an explicit empty override suppresses the icon" "nvim" \
+  "$(
+    ICON_MAP=("nvim=")
+    TAB_LABEL='icon name' ar_format 'nvim' 'nvim'
+  )"
+check "an empty override suppresses the glyph beside a task" "auth-flow" \
+  "$(
+    ICON_MAP=("claude=")
+    TAB_LABEL='icon task' ar_format 'claude' 'claude' 'Fix the auth flow'
+  )"
+check "duplicate fallback icons fall back to the name" "rg" \
+  "$(
+    TAB_LABEL=(icon icon)
+    ar_format 'rg' 'rg'
+  )"
+check "an empty TAB_LABEL falls back to the name" "claude" \
+  "$(TAB_LABEL="" ar_format 'claude' 'claude')"
 check "a task label obeys MAX_TASK_LEN" "screensaver" \
-  "$(MAX_TASK_LEN=12 AGENT_TAB_NAMES=task ar_format 'claude' 'claude' "$_title")"
+  "$(MAX_TASK_LEN=12 TAB_LABEL=task ar_format 'claude' 'claude' "$_title")"
 
-# ---- AGENT_TAB_NAMES=(name task): composing the agent's name with its task ----
+# ---- TAB_LABEL=(name task): composing the agent's name with its task ----
 check "(name task) opens with the agent" "claude:screensaver" \
   "$(
-    AGENT_TAB_NAMES=(name task)
+    TAB_LABEL=(name task)
     ar_format 'claude' 'claude' "$_title"
   )"
 # The parts render in the order the config wrote them.
 check "parts are honored in order" "auth-flow:claude" \
   "$(
-    AGENT_TAB_NAMES=(task name)
+    TAB_LABEL=(task name)
     ar_format 'claude' 'claude' 'Fix the auth flow'
   )"
 # The alias is the user's short form for the agent, so it is the prefix too.
 check "the prefix maps through PROGRAM_ALIASES" "cc:screensaver" \
   "$(
     PROGRAM_ALIASES=("claude=cc")
-    AGENT_TAB_NAMES=(name task)
+    TAB_LABEL=(name task)
     ar_format 'claude' 'claude' "$_title"
   )"
 # Prefix, colon and task share the one budget: 12 leaves "claude:" five
@@ -412,7 +441,7 @@ check "the prefix maps through PROGRAM_ALIASES" "cc:screensaver" \
 check "prefix and task fit MAX_TASK_LEN together" "claude:scree" \
   "$(
     MAX_TASK_LEN=12
-    AGENT_TAB_NAMES=(name task)
+    TAB_LABEL=(name task)
     ar_format 'claude' 'claude' "$_title"
   )"
 # A budget the prefix exhausts drops the title, not the name -- and a title
@@ -420,28 +449,28 @@ check "prefix and task fit MAX_TASK_LEN together" "claude:scree" \
 check "prefix that exhausts the budget -> name alone" "claude" \
   "$(
     MAX_TASK_LEN=7
-    AGENT_TAB_NAMES=(name task)
+    TAB_LABEL=(name task)
     ar_format 'claude' 'claude' "$_title"
   )"
 check "unusable title under the prefix -> name alone" "claude" \
   "$(
-    AGENT_TAB_NAMES=(name task)
+    TAB_LABEL=(name task)
     ar_format 'claude' 'claude' 'to the and of'
   )"
 check "unusable title under the prefix keeps the bare alias" "cc" \
   "$(
     PROGRAM_ALIASES=("claude=cc")
-    AGENT_TAB_NAMES=(name task)
+    TAB_LABEL=(name task)
     ar_format 'claude' 'claude' 'to the and of'
   )"
 # An explicit "name", and anything unrecognized, is the default behavior.
 check "part name alone ignores the title" "claude" \
-  "$(AGENT_TAB_NAMES=name ar_format 'claude' 'claude' "$_title")"
+  "$(TAB_LABEL=name ar_format 'claude' 'claude' "$_title")"
 check "an unknown part is ignored" "claude" \
-  "$(AGENT_TAB_NAMES=bogus ar_format 'claude' 'claude' "$_title")"
+  "$(TAB_LABEL=bogus ar_format 'claude' 'claude' "$_title")"
 # An intentionally-empty word list must survive the declare -p guard, the same as
 # every other list: the title is then shortened without dropping anything.
-got=$(bash -c 'SHELL_NAME=zsh; AGENT_TAB_NAMES=task; MAX_TASK_LEN=20; TITLE_LEAD_VERBS=(); TITLE_FILLER_WORDS=(); . "$1"; ar_format claude claude "Adjust screensaver timeout on the Ubuntu box"' _ "$here/../naming.sh")
+got=$(bash -c 'SHELL_NAME=zsh; TAB_LABEL=task; MAX_TASK_LEN=20; TITLE_LEAD_VERBS=(); TITLE_FILLER_WORDS=(); . "$1"; ar_format claude claude "Adjust screensaver timeout on the Ubuntu box"' _ "$here/../naming.sh")
 check "empty title word lists survive" "adjust-screensaver" "$got"
 
 # The default budgets, exercised in a fresh shell: a task label gets
@@ -450,7 +479,7 @@ check "empty title word lists survive" "adjust-screensaver" "$got"
 # MAX_NAME_LEN's 20, or the label built here would be chopped right back.
 got=$(bash -c 'SHELL_NAME=zsh; . "$1"; ar_condense_title "Adjust screensaver timeout on the Ubuntu box"' _ "$here/../naming.sh")
 check "a task label defaults to a 30 budget" "screensaver-timeout-ubuntu-box" "$got"
-got=$(bash -c 'SHELL_NAME=zsh; AGENT_TAB_NAMES=task; . "$1"; ar_format claude claude "Adjust screensaver timeout on the Ubuntu box"' _ "$here/../naming.sh")
+got=$(bash -c 'SHELL_NAME=zsh; TAB_LABEL=task; . "$1"; ar_format claude claude "Adjust screensaver timeout on the Ubuntu box"' _ "$here/../naming.sh")
 check "the final truncation honors the task budget" "screensaver-timeout-ubuntu-box" "$got"
 
 t_summary

@@ -58,36 +58,39 @@
 # number alone ("[3]"). Programs are named as usual either way.
 # HIDE_SHELL=0
 
-# What an agent tab shows: an ordered list of parts, joined by ":". herdr's
-# own detection decides which tabs count as agents (see below); this decides
-# what those tabs read.
+# What a tab shows: an ordered list of parts, one model for every tab.
 #
-#   name   the agent's own name: "claude". (name) is the default.
-#   task   what the agent is working on: "screensaver-timeout". Every
+#   icon   a Nerd Font glyph for the program (needs a Nerd Font; ICON_FALLBACK
+#          and ICON_MAP below pick which glyph). Joined to its neighbors by a
+#          space. Never on a shell label.
+#   name   the tab's text as ever: the program (through PROGRAM_ALIASES), its
+#          command line under SHOW_PROGRAM_ARGS, or the shell's name.
+#   task   what a detected agent is working on: "screensaver-timeout". Every
 #          supported agent already publishes a short summary of the current
 #          task as its terminal title, so nothing is invented here: that title
-#          is only shortened to a label. Five claude tabs under (task) then
-#          read "screensaver-timeout", "nightly-ETL-job", ... instead of
-#          "claude" five times.
+#          is only shortened to a label. Renders nothing on other tabs. Five
+#          claude tabs under (task) then read "screensaver-timeout",
+#          "nightly-ETL-job", ... instead of "claude" five times.
 #
-# (name task) shows both, "claude:screensaver", in the order written -- (task
-# name) flips it. The parts fit the one MAX_TASK_LEN budget: the task gives up
-# what the name part takes, so a short alias buys it more room. A single part
-# may be written without parens (AGENT_TAB_NAMES=task); unknown parts are
+# (name) is the default and the old behavior; (icon name) is the old icons
+# look. Text parts join with ":", in the order written: (name task) reads
+# "claude:screensaver" and (task name) flips it. When name and task share a
+# label they fit the one MAX_TASK_LEN budget: the task gives up what the name
+# part takes, so a short alias buys it more room. May be written as an array
+# or as one space-separated string (TAB_LABEL="icon name"); unknown parts are
 # ignored.
 #
-# In every composition PROGRAM_ALIASES renames the NAME wherever it appears,
-# including the fallback: it never turns the task display off. No usable title
-# leaves the tab named after the agent alone, never a dangling joint.
-#
-# While herdr detects an agent in a pane, the whole label keys to that agent:
-# the task outranks the shell and quick-command fallbacks, and the name part,
-# its alias, the glyph and the no-title fallback follow the detection rather
-# than whatever holds the foreground. A suspended claude reads
-# "claude:auth-flow", not "zsh:auth-flow"; with no usable title it reads
-# "claude". Icons stay keyed to the agent (ICON_STYLE=icon shows the glyph
-# alone, as for any program).
-# AGENT_TAB_NAMES=name
+# A label that composes to nothing falls back to the name text, so no tab is
+# left unnamed, PROGRAM_ALIASES renames the NAME wherever it appears
+# (including that fallback), and an alias never turns the task display off.
+# herdr's own detection decides which tabs count as agents (see below). While
+# herdr detects an agent in a pane, the whole label keys to that agent: the
+# task outranks the shell and quick-command fallbacks, and the name part, its
+# alias, the glyph and the no-title fallback follow the detection rather than
+# whatever holds the foreground. A suspended claude reads "claude:auth-flow",
+# not "zsh:auth-flow"; with no usable title it reads "claude", and (icon task)
+# carries the agent's glyph.
+# TAB_LABEL=name
 #
 # The shortening drops a leading verb, drops filler words, then takes whole words
 # until MAX_TASK_LEN (default 30, its own knob below) is spent, keeping the
@@ -185,7 +188,7 @@
 # knob: "claude=cc" makes every claude tab read "cc" on its own. The key is the
 # program name the tab would otherwise show, which for an agent behind a
 # runtime wrapper is the name herdr detects ("codex", not "node"); `herdr agent
-# list` prints the names herdr uses. Under AGENT_TAB_NAMES the alias follows
+# list` prints the names herdr uses. Under TAB_LABEL the alias follows
 # the agent's name wherever the parts put it -- the name part in (name task)
 # ("cc:auth-flow"), the no-title fallback under (task) -- and never suppresses
 # the task itself.
@@ -200,15 +203,13 @@
 #   's|.*poetry shell.*|poetry|'
 # )
 
-# Prepend a Nerd Font glyph (needs a Nerd Font). ICON_STYLE is one of
-# name_and_icon (default), name, or icon.
-# ICONS_ENABLED=0
-# ICON_STYLE=name_and_icon
+# Whether and where a glyph appears is TAB_LABEL's call (its "icon" part, at
+# the top of this file); the two knobs below pick WHICH glyph.
 
 # Glyph shown when a program is missing from the builtin map (which comes from
 # tmux-nerd-font-window-name's defaults.yml, ~170 programs). An empty string
-# turns the fallback off, so unknown programs get no icon. Under ICON_STYLE=icon
-# the fallback is treated as "no glyph": a bare "?" says nothing about the
+# turns the fallback off, so unknown programs get no icon. A label that would
+# be nothing but the fallback (a bare "?" under (icon)) says nothing about the
 # program, so the plain name is kept instead. Shell labels never get an icon
 # either way (SHELLS, the login shell, and IGNORED_PROGRAMS commands): the tab
 # is showing the shell, not the program.

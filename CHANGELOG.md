@@ -8,12 +8,13 @@ All notable changes to herdr-automatic-rename are documented here. The format fo
 
 ### Added
 
-- `AGENT_TAB_NAMES` picks what an agent tab shows, as an ordered list of
-  parts joined by `:` -- `name` (the agent's own name) and `task` (what the
-  agent is working on). `(name)` is the default and the old behavior;
-  `(name task)` reads `claude:auth-flow`, in the order written. Under
-  `(task)`, several `claude` tabs stop reading `claude`; naming by foreground
-  program has no other way to separate them.
+- `TAB_LABEL` picks what a tab shows, as an ordered list of parts --
+  `icon` (a Nerd Font glyph for the program), `name` (the tab's text as
+  ever) and `task` (what a detected agent is working on). `(name)` is the
+  default and the old behavior; `(icon name)` is the old icons look; text
+  parts join with `:`, so `(name task)` reads `claude:auth-flow`, in the
+  order written. Under `(task)`, several `claude` tabs stop reading
+  `claude`; naming by foreground program has no other way to separate them.
 
   Nothing is generated. Every agent herdr detects already publishes a summary of
   its current task as the pane's terminal title, and that title already arrives
@@ -80,7 +81,7 @@ All notable changes to herdr-automatic-rename are documented here. The format fo
   budget. `lower` folds the identifiers too; `keep` leaves the title as the
   agent cased it.
 
-- `AGENT_TAB_NAMES=(name task)` opens the label with the agent that owns
+- `TAB_LABEL=(name task)` opens the label with the agent that owns
   it: `claude:auth-flow`, or through `PROGRAM_ALIASES`, `cc:auth-flow`. (The
   alias knob itself needs no parts: `claude=cc` renames every claude tab on
   its own, keyed by the name herdr detects for a wrapped agent.)
@@ -89,6 +90,24 @@ All notable changes to herdr-automatic-rename are documented here. The format fo
   characters the name part takes, so a short alias buys it more room -- and a
   title that yields nothing leaves the tab named after the agent alone, never
   a dangling joint.
+
+### Changed
+
+- BREAKING: `ICONS_ENABLED` and `ICON_STYLE` are gone. Icons are now the
+  `icon` part of `TAB_LABEL`, the one composition model for every tab, and
+  the old looks translate directly:
+
+      ICONS_ENABLED=1                    ->  TAB_LABEL=(icon name)
+      ICONS_ENABLED=1 ICON_STYLE=icon    ->  TAB_LABEL=(icon)
+      ICON_STYLE=name, or icons off      ->  TAB_LABEL=(name)
+
+  One model instead of two knobs that could fight: `ICON_STYLE=icon`
+  silently discarded whatever the text was, including a task label the user
+  had just opted into. As a part, the icon composes instead of overriding,
+  and future parts have a home without another mode knob. `ICON_FALLBACK`
+  and `ICON_MAP` are untouched: they pick WHICH glyph, `TAB_LABEL` says
+  whether and where. A config that sets none of the removed knobs is
+  unaffected: the default `(name)` renders exactly what it always did.
 
 ## [0.6.1] - 2026-08-14
 

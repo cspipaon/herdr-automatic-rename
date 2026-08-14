@@ -27,7 +27,7 @@ setup() {
   export SHELL_NAME=zsh
   unset HERDR_MOCK_VERSION HERDR_MOCK_NO_VERSION   # per-scenario opt-in; mock default is current herdr
   unset HIDE_SHELL                                 # per-scenario opt-in; default is off
-  unset AGENT_TAB_NAMES                            # per-scenario opt-in; default is "name"
+  unset TAB_LABEL                                  # per-scenario opt-in; default is (name)
   unset AUTO_INDEX_WORKSPACES AUTO_INDEX_TABS AUTO_INDEX_AGENTS   # per-kind opt-in; inherit AUTO_INDEX
 }
 fixture() { cat >"$HERDR_MOCK_DIR/$1"; }   # fixture <name>  (JSON on stdin)
@@ -730,7 +730,7 @@ check_absent   "no rename from the stale session ref"  "$out" "[4] claude"
 teardown
 
 # ======================================================================
-# Scenario 20: AGENT_TAB_NAMES=task -- an agent tab is named after the task
+# Scenario 20: TAB_LABEL=task -- an agent tab is named after the task
 # the agent reports, and only an agent tab is.
 #
 # herdr's own detection decides which pane that is, read from the .agent field
@@ -742,7 +742,7 @@ teardown
 # must not admit a title either.
 # ======================================================================
 setup
-export NAME_TABS=1 AUTO_INDEX=1 AGENT_TAB_NAMES=task
+export NAME_TABS=1 AUTO_INDEX=1 TAB_LABEL=task
 fixture workspaces.json <<'JSON'
 {"result":{"workspaces":[{"workspace_id":"w1","label":"api"}]}}
 JSON
@@ -895,7 +895,7 @@ teardown
 # the fallback name must come off the pane object, with no `agent list` call.
 # ======================================================================
 setup
-export NAME_TABS=1 AUTO_INDEX=1 AGENT_TAB_NAMES=task
+export NAME_TABS=1 AUTO_INDEX=1 TAB_LABEL=task
 fixture workspaces.json <<'JSON'
 {"result":{"workspaces":[{"workspace_id":"w1","label":"api"}]}}
 JSON

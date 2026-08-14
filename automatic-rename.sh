@@ -482,13 +482,16 @@ ar_tab_name() {
   fi
   # Only pay for the title and agent lookups when a part asks for them;
   # ar_format ignores the arguments otherwise, and a default install must not
-  # gain a jq call per tab. The agent rides along so the label keys to the
-  # detected agent even when its foreground is a shell or a quick command (a
-  # suspended agent's pane is still that agent's pane).
-  if ar_in_list task "${AGENT_TAB_NAMES[@]}"; then
+  # gain a jq call per tab. The substring match accepts the parts as an array
+  # or as one string. The agent rides along so the label keys to the detected
+  # agent even when its foreground is a shell or a quick command (a suspended
+  # agent's pane is still that agent's pane).
+  case " ${TAB_LABEL[*]:-name} " in
+  *" task "*)
     title=$(ar_pane_agent_title "$pane")
     [ -n "$kind" ] || kind=$(ar_pane_agent_kind "$pane")
-  fi
+    ;;
+  esac
   ar_format "$prog" "$cmd" "$title" "$kind"
 }
 
