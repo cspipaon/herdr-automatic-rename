@@ -367,6 +367,58 @@ ar_pane_agent_kind() {
   ' 2>/dev/null
 }
 
+# ar_pane_agent_title <pane_id> -> the pane's terminal title when herdr has
+# detected an agent running in it, else "".
+#
+# The gate is herdr's own detection, read from the pane's .agent field -- the
+# same field ar_pane_agent_kind trusts, so the plugin has one notion of "herdr
+# detected an agent here" (on a live 0.8.0, .agent present and agent_status not
+# "unknown" are the same set of panes; .agent is the one verified against
+# `agent list`, and gating on it keeps herdr#803's half-wired panes out of both
+# paths at once). Not the foreground program name: codex runs as `node`, so a
+# name list misses it, and would need extending for every agent herdr learns
+# about. herdr already knows, and its answer is the authority.
+#
+# The empty return for every other pane is the point, not a fallback: a pane with
+# no agent in it carries the shell's title, which is a working directory
+# ("user@host:~/code/api"), and condensing that into a tab name would be nonsense.
+# Detection lag is safe for the same reason -- before herdr recognizes the agent
+# the title is not a task summary yet either.
+#
+# Served from the cached $AR_PANES_JSON that ar_resolve_pane already reads, so
+# this adds no herdr call to a reconcile. Prefers the stripped title: herdr
+# removes the agent's own state decorations there (ar_condense_title drops
+# whatever it missed).
+ar_pane_agent_title() {
+  printf '%s' "$AR_PANES_JSON" | jq -r --arg p "$1" --arg home "${HOME:-}" '
+    (.result.panes // .panes // [])
+    | map(select(.pane_id == $p))
+    | .[0]
+    | if . == null then ""
+      elif (.agent // "") == "" then ""
+      else
+        ((.terminal_title_stripped // .terminal_title // "")) as $t
+        | (.cwd // "") as $cw
+        | (.foreground_cwd // "") as $fw
+        # Titles that carry no task are treated as absent, and the caller falls
+        # back to the agent name. Both shapes are matched on the title rather
+        # than on which agent produced it, so the next agent that does the same
+        # needs no change and no list is maintained:
+        #   - the working directory: bare (codex titles a pane
+        #     "herdr-automatic-rename", the repo name the workspace label
+        #     already says) or as a path, "~"-abbreviated or not;
+        #   - a shell prompt, "user@host:...". herdr detects an agent the
+        #     moment one runs anywhere in the pane -- including a headless
+        #     subprocess some other program spawned -- while the pane title is
+        #     still whatever the shell last wrote there.
+        | ([($cw | split("/") | last), ($fw | split("/") | last), $cw, $fw]
+           + (if $home != "" and ($cw | startswith($home)) then ["~" + $cw[($home | length):]] else [] end)
+           + (if $home != "" and ($fw | startswith($home)) then ["~" + $fw[($home | length):]] else [] end)) as $notask
+        | if $t == "" or ($notask | index($t)) or ($t | test("^[^@[:space:]]+@[^:[:space:]]+:")) then "" else $t end
+      end
+  ' 2>/dev/null
+}
+
 # ar_pane_program <pane_id> -> TSV "program<TAB>cmdline".
 # The foreground command is the process-group leader (pid == group id). At a bare
 # prompt the leader IS the login shell, whose argv0 ("-zsh") strips to "zsh".
@@ -402,7 +454,7 @@ ar_pane_program() {
 # failure); a successful HIDE_SHELL computation returns 0 with EMPTY output, so
 # the caller must read the status, not the string, to tell the two apart.
 ar_tab_name() {
-  local pane info prog="" cmd="" kind=""
+  local pane info prog="" cmd="" title="" kind=""
   pane=$(ar_resolve_pane "$1" "$2" "$3")
   [ -n "$pane" ] || return 1
   # process-info can fail transiently (pane closing, socket hiccup) or resolve no
@@ -418,6 +470,9 @@ ar_tab_name() {
   # answer wins. Both conditions are needed: a plain `node server.js` tab has no
   # agent and keeps its name, and an agent that reports its own name never
   # reaches this.
+  #
+  # This is also what names a tab whose agent publishes no usable task below: the
+  # title comes back empty and the agent name is already in $prog.
   if ar_in_list "$prog" "${WRAPPER_PROGRAMS[@]}"; then
     kind=$(ar_pane_agent_kind "$pane")
     if [ -n "$kind" ]; then
@@ -425,7 +480,16 @@ ar_tab_name() {
       cmd=$kind
     fi
   fi
-  ar_format "$prog" "$cmd"
+  # Only pay for the title and agent lookups when a part asks for them;
+  # ar_format ignores the arguments otherwise, and a default install must not
+  # gain a jq call per tab. The agent rides along so the label keys to the
+  # detected agent even when its foreground is a shell or a quick command (a
+  # suspended agent's pane is still that agent's pane).
+  if ar_in_list task "${AGENT_TAB_NAMES[@]}"; then
+    title=$(ar_pane_agent_title "$pane")
+    [ -n "$kind" ] || kind=$(ar_pane_agent_kind "$pane")
+  fi
+  ar_format "$prog" "$cmd" "$title" "$kind"
 }
 
 # ======================================================================

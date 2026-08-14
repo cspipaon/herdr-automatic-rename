@@ -25,7 +25,7 @@ _ar_icons_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 unset _ar_icons_dir
 
 # ---- configurable knobs (override in config.sh / $HERDR_AUTOMATIC_RENAME_CONFIG) ----
-: "${MAX_NAME_LEN:=20}"     # truncate the final label to this many chars
+: "${MAX_NAME_LEN:=20}"     # truncate a program or cmdline label to this many chars (task labels: MAX_TASK_LEN)
 : "${SHOW_PROGRAM_ARGS:=0}" # 1 = regular programs show their full command line; 0 = name only
 
 # Name shown at a bare prompt (no foreground program), and while an
@@ -73,6 +73,58 @@ declare -p IGNORED_PROGRAMS >/dev/null 2>&1 || IGNORED_PROGRAMS=(ls eza ll la cd
 declare -p WRAPPER_PROGRAMS >/dev/null 2>&1 || WRAPPER_PROGRAMS=(node bun deno npx bunx npm pnpm yarn
   python python3 uv uvx pipx ruby)
 
+# What an agent tab shows: an ordered list of parts, joined by ":".
+#
+#   name   the agent's own name ("claude"), through its PROGRAM_ALIASES alias
+#          when one is set.
+#   task   what the agent is working on ("screensaver-timeout"). Every
+#          supported agent already publishes a short summary of the current
+#          task as its terminal title, so nothing here invents a name: the
+#          title is only condensed to a label by ar_condense_title.
+#
+# (name) is the default and the old behavior. (task) names the tab after the
+# work alone. (name task) shows both, "claude:auth-flow", and the order is
+# honored: (task name) reads "auth-flow:claude". A single part may be written
+# without parens (AGENT_TAB_NAMES=task); unknown parts are ignored. Whenever
+# the title is missing or unusable, the tab falls back to the name part's text,
+# so an alias renames the name wherever it appears and never turns the task
+# display off.
+declare -p AGENT_TAB_NAMES >/dev/null 2>&1 || AGENT_TAB_NAMES=(name)
+
+# Leading imperative verbs dropped from a title. An agent summary is written as
+# "<verb> <subject>", and the verb is the one word that says nothing about which
+# tab this is: every one of them is reviewing, fixing or adding something.
+declare -p TITLE_LEAD_VERBS >/dev/null 2>&1 || TITLE_LEAD_VERBS=(review adjust add fix update
+  create make check investigate debug refactor implement write set setup configure explore
+  improve build test run clean remove delete migrate port rename draft plan research diagnose audit)
+
+# Words dropped from a title wherever they appear. A tab label is not a sentence,
+# so articles, prepositions and phrasal-verb particles only burn the budget.
+declare -p TITLE_FILLER_WORDS >/dev/null 2>&1 || TITLE_FILLER_WORDS=(a an the to for of on in at
+  and or with from into via why how what that if whether is are be it its this up out off down over back)
+
+# The length budget for a task label, in characters. A task runs longer than a
+# program name by nature, so it gets its own budget rather than MAX_NAME_LEN's,
+# which keeps governing program and command-line labels exactly as before.
+# Everything task-shaped fits this one number: the condensed words with their
+# separators, and when the parts include the name, its text and joint too.
+: "${MAX_TASK_LEN:=30}"
+
+# The string joining the words of a task label. The default "-" fuses the label
+# into one token ("nightly-ETL-job"), the shape every other tab name has; set
+# ' ' to read like the phrase the agent wrote. Whatever it is, its length
+# counts against MAX_TASK_LEN like any other character.
+: "${TITLE_WORD_SEPARATOR:=-}"
+
+# The casing of a task label (ASCII: jq has no full Unicode downcase, so an
+# accented capital keeps its case). "fold" (default) downcases every word
+# except an all-caps-and-digits identifier: "nightly-ETL-job",
+# "reviewing-unpushed". A sentence-case capital is how the agent writes, not
+# signal; an identifier's shape carries meaning, and case costs no budget.
+# "lower" folds the identifiers too ("nightly-etl-job"); "keep" leaves the
+# casing as the agent wrote it. Unknown values behave as "fold".
+: "${TITLE_CASE:=fold}"
+
 # Ordered, complete `sed -E` programs applied to the final display string.
 declare -p SUBSTITUTE_SETS >/dev/null 2>&1 || SUBSTITUTE_SETS=(
   's|.*ipython([32])|ipython\1|'
@@ -118,16 +170,163 @@ ar_subst() {
   printf '%s' "$s"
 }
 
+# ar_condense_title <title> [<reserved>] -> a task label, or "".
+#
+# The label fits MAX_TASK_LEN minus <reserved>'s length: the caller passes the
+# literal text that will share the label (a name part and its joint, a glyph
+# and its space), and jq measures it in codepoints, because bash's ${#} counts
+# bytes under a C locale and would overcharge anything non-ASCII.
+#
+# Selects; never generates. The agent already wrote the summary, so the work here
+# is only to shorten it: drop a leading verb (TITLE_LEAD_VERBS), drop filler
+# (TITLE_FILLER_WORDS), then take whole words from the front until the budget is
+# spent, stopping at the first word that does not fit rather than skipping ahead
+# (a later short word would read as a non sequitur next to the ones before it).
+#
+# Words are taken in the order the agent wrote them. Selecting by "distinctness"
+# instead -- proper nouns, gerunds, rare words -- measurably reads worse: it
+# prefers where the work happens over what it is ("screensaver Ubuntu" for
+# "Adjust screensaver timeout on the Ubuntu box"), and an -ing word in these
+# summaries is usually a modifier ("streaming pipeline"), so promoting it evicts
+# the noun carrying the meaning. The input is already ordered by an agent that
+# put the salient words first; this trusts that rather than re-ranking it.
+#
+# One jq program rather than a bash loop: jq is already a hard dependency, reads
+# UTF-8 regardless of the ambient locale (see the truncation note in ar_format),
+# and keeps this a single subprocess per tab.
+ar_condense_title() {
+  local title=$1 reserved=${2:-} max=${MAX_TASK_LEN:-30}
+  [ -n "$title" ] || return 0
+  printf '%s' "$title" | jq -Rrs \
+    --argjson max "$max" \
+    --arg reserved "$reserved" \
+    --arg sep "${TITLE_WORD_SEPARATOR:--}" \
+    --arg case "${TITLE_CASE:-fold}" \
+    --arg verbs "${TITLE_LEAD_VERBS[*]}" \
+    --arg filler "${TITLE_FILLER_WORDS[*]}" '
+      ([$max - ($reserved | length), 0] | max) as $m
+    | ($verbs  | ascii_downcase | split(" ")) as $verb
+    | ($filler | ascii_downcase | split(" ")) as $fill
+    # Leading state glyphs: herdr strips some agent title decorations but not
+    # all, and a label must not open with a stray bullet. Separators inside the
+    # title are word breaks, not characters ("tab/workspace" is two words).
+    | sub("^[^\\p{L}\\p{N}]+"; "")
+    # An agent that badges its title ("OC | Reviewing unpushed commits") spends
+    # the budget on its own name before saying anything. Drop a short all-caps
+    # token followed by a pipe: that shape is branding, and the cap plus the
+    # upper-case requirement keeps it off real content ("auth | login flow"
+    # keeps its first word).
+    | sub("^[A-Z0-9]{1,4} *\\| *"; "")
+    | gsub("[/,;:|]+"; " ")
+    | [splits("[[:space:]]+")]
+    | map(select(length > 0))
+    | . as $words
+    | (if ($words | length) > 0 and ($verb | index($words[0] | ascii_downcase))
+       then $words[1:] else $words end)
+    | map(. as $w | select($fill | index($w | ascii_downcase) | not))
+    # Casing: a sentence-case capital is the agent writing a sentence, not
+    # signal; an all-caps-and-digits token is an identifier whose shape means
+    # something. "fold" spares only the identifiers, "lower" folds those too,
+    # "keep" touches nothing. Anything else behaves as the "fold" default.
+    | map(if $case == "keep" then .
+          elif $case == "lower" then ascii_downcase
+          elif test("^[A-Z0-9]{2,}$") then .
+          else ascii_downcase end)
+    | reduce .[] as $w ({out: "", done: false};
+        if .done then .
+        elif .out == "" then {out: ($w[:$m]), done: false}
+        elif ((.out | length) + ($sep | length) + ($w | length)) <= $m then {out: (.out + $sep + $w), done: false}
+        else {out: .out, done: true} end)
+    | .out
+  ' 2>/dev/null
+}
+
 # ---- helpers ----
 
-# ar_format <program|""> <cmdline> -> final tab label
-#   program == "" means a bare prompt (name by the shell).
+# ar_format <program|""> <cmdline> [<terminal title>] [<agent>] -> final tab label
+#   program == "" means a bare prompt (name by the shell). <agent> is the agent
+#   herdr detected in the pane, when the engine looked one up.
 ar_format() {
-  local prog=$1 cmdline=$2 name="" ic aliased is_shell=0
+  local prog=$1 cmdline=$2 title=${3:-} agent=${4:-} name="" ic aliased is_shell=0 condensed="" prefix="" rsv="" tic="" ctask="" part
+  local -a plist=()
+  # Normalize the parts: order kept, duplicates collapsed (a doubled part would
+  # render twice while the budget charged it once), unknown names dropped.
+  for part in "${AGENT_TAB_NAMES[@]}"; do
+    case "$part" in
+    name | task) ar_in_list "$part" "${plist[@]}" || plist+=("$part") ;;
+    esac
+  done
   aliased=$(ar_alias "$prog")
+  # A title arrives only for a pane herdr has detected an agent in: deciding that
+  # is a herdr fact, so the engine does it (ar_pane_agent_title) and this stays a
+  # string function. An empty title is every other tab, and costs nothing here.
+  # AGENT_TAB_NAMES lists the parts such a tab shows; an alias renames the
+  # agent's NAME wherever it appears, and never turns the task display off.
+  if [ -n "$prog" ] && ar_in_list task "${plist[@]}" &&
+    { [ -n "$title" ] || [ -n "$agent" ]; }; then
+    # The name part, its alias and the fallback key to the DETECTED agent when
+    # the engine supplies one: a suspended agent's pane is still that agent's
+    # pane, and the shell or quick command holding its foreground must not lend
+    # the label its identity.
+    if [ -n "$agent" ]; then
+      prefix=$(ar_alias "$agent")
+      prefix=${prefix:-$agent}
+    else
+      prefix=${aliased:-$prog}
+    fi
+    if [ -n "$title" ]; then
+      # Everything that will share the label is priced out of MAX_TASK_LEN
+      # before the task is condensed into the rest: the name part and its ":"
+      # joint, and the glyph and its space when icons show text alongside. The
+      # pricing happens inside ar_condense_title, in codepoints, so a
+      # non-ASCII alias or a multibyte glyph is not overcharged by bash's byte
+      # counting. A budget the parts exhaust, like a title that condenses to
+      # nothing, leaves $ctask empty and the tab falls back below -- never a
+      # dangling joint, never a mid-word cut.
+      rsv=""
+      if [ "${ICONS_ENABLED:-0}" = "1" ]; then
+        # Reserve the glyph exactly when the formatter will show it beside the
+        # text: every style except "icon" (glyph only) and "name" (no glyph),
+        # matching the formatter's catch-all for unknown styles.
+        case "${ICON_STYLE:-name_and_icon}" in
+        icon | name) : ;;
+        *)
+          tic=$(ar_icon "${agent:-$prog}")
+          [ -z "$tic" ] || rsv="$tic "
+          ;;
+        esac
+      fi
+      if ar_in_list name "${plist[@]}"; then
+        rsv="$rsv$prefix:"
+      fi
+      ctask=$(ar_condense_title "$title" "$rsv")
+    fi
+    if [ -n "$ctask" ]; then
+      # Parts render in the order the config wrote them; unknown parts add
+      # nothing.
+      for part in "${plist[@]}"; do
+        case "$part" in
+        name) condensed="${condensed:+$condensed:}$prefix" ;;
+        task) condensed="${condensed:+$condensed:}$ctask" ;;
+        esac
+      done
+    elif [ -n "$agent" ]; then
+      # No usable task, but herdr knows whose pane this is: fall back to the
+      # agent's name, not the foreground's.
+      condensed=$prefix
+    fi
+  fi
   if [ -z "$prog" ]; then
     name=$SHELL_NAME
     is_shell=1
+  elif [ -n "$condensed" ]; then
+    # An agent tab says what the agent is working on. A title that condenses to
+    # nothing (all filler, or absent) leaves this empty and falls through to the
+    # agent's own name below -- through the alias when one is set -- so the tab
+    # is never left unnamed. Above the alias branch on purpose: under "task" the
+    # task outranks the hand-set name, and under (name task) the label
+    # already carries it.
+    name=$condensed
   elif [ -n "$aliased" ]; then
     name=$aliased # user rename (PROGRAM_ALIASES) wins
   elif ar_in_list "$prog" "${SHELLS[@]}"; then
@@ -167,7 +366,9 @@ ar_format() {
   # additionally keeps a cmdline- or alias-derived label of the same text plain.
   if [ "${ICONS_ENABLED:-0}" = "1" ] && [ -n "$prog" ] && [ "$is_shell" = "0" ] &&
     [ "$name" != "$SHELL_NAME" ]; then
-    ic=$(ar_icon "$prog")
+    # A label keyed to a detected agent gets the agent's glyph, whatever holds
+    # the pane's foreground.
+    ic=$(ar_icon "${agent:-$prog}")
     # A lone fallback glyph says nothing about the program, so under
     # ICON_STYLE=icon it is skipped and the plain name is kept: rg -> "rg",
     # not "?". (name_and_icon still shows "? rg".)
@@ -188,7 +389,11 @@ ar_format() {
   # hard dependency of this plugin) always reads input as UTF-8, so it slices on
   # codepoint boundaries regardless of the ambient locale; fall back to the byte
   # cut only if jq is somehow unavailable.
+  # A task label was built to the MAX_TASK_LEN budget, so it is measured against
+  # that budget here too; every other label keeps MAX_NAME_LEN. ($condensed is
+  # only ever non-empty when it became the label above.)
   local max=${MAX_NAME_LEN:-20}
+  [ -z "$condensed" ] || max=${MAX_TASK_LEN:-30}
   if [ "${#name}" -gt "$max" ]; then
     local truncated
     truncated=$(printf '%s' "$name" | jq -Rrs --argjson n "$max" '.[:$n]' 2>/dev/null || printf '')

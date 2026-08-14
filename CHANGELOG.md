@@ -6,6 +6,90 @@ All notable changes to herdr-automatic-rename are documented here. The format fo
 
 ## [Unreleased]
 
+### Added
+
+- `AGENT_TAB_NAMES` picks what an agent tab shows, as an ordered list of
+  parts joined by `:` -- `name` (the agent's own name) and `task` (what the
+  agent is working on). `(name)` is the default and the old behavior;
+  `(name task)` reads `claude:auth-flow`, in the order written. Under
+  `(task)`, several `claude` tabs stop reading `claude`; naming by foreground
+  program has no other way to separate them.
+
+  Nothing is generated. Every agent herdr detects already publishes a summary of
+  its current task as the pane's terminal title, and that title already arrives
+  on the pane list this plugin reads for naming, so the work is only to shorten
+  it: drop a leading verb, drop filler, then take whole words until
+  `MAX_TASK_LEN` (default 30, a task's own budget; program and command-line
+  labels keep `MAX_NAME_LEN`) is spent, keeping the order the agent wrote them
+  in. "Adjust the screensaver timeout" becomes `screensaver-timeout`.
+
+  Because it only selects words already in the title, a summary whose
+  distinguishing word falls past the budget gives a vague label rather than a
+  wrong one: "Review the Herdr tab/workspace/agent numbering proposal" becomes
+  `herdr-tab-workspace-agent`. Raising `MAX_TASK_LEN` is the answer where that
+  reads too thin.
+
+  The default stays `name`, since `task` replaces the `claude` a tab reads
+  today. Which tabs count as agents is herdr's own detection, read from the agent herdr publishes
+  on the pane object (the same field the runtime-wrapper fix trusts), rather
+  than a list of agent program names: a name list misses `codex`, whose
+  foreground process is `node`, and would need an entry for every agent herdr
+  learns to detect. It matters in the other direction too, because a pane herdr sees no
+  agent in carries the shell's title, which is a working directory, and that must
+  never become a tab name.
+
+  A title that is missing or is all verb and filler falls back to the agent
+  name, through its `PROGRAM_ALIASES` alias when one is set, so no tab is left
+  unnamed. In every mode an alias renames the agent's NAME wherever the mode
+  puts it (the whole label, the prefix, or that fallback) and never turns the
+  task display off. While herdr detects an agent in the pane, the whole label
+  keys to that agent: the task outranks the shell and quick-command fallbacks,
+  and the name part, its alias, the glyph and the no-title fallback follow the
+  detection rather than the foreground, so a suspended claude reads
+  `claude:auth-flow`, never `zsh:auth-flow`. Costs no extra herdr call, and
+  the title lookup is skipped entirely in `name` mode. Length budgeting is
+  done in codepoints inside jq, so a non-ASCII alias or a glyph is never
+  overcharged by bash's byte counting, and a glyph is priced out of the task
+  budget up front rather than truncating a chosen word afterward.
+
+  Agents differ in what they put in that title, so three shapes are handled,
+  all matched on the title itself rather than on which agent wrote it. A title
+  that is just the working directory (bare, as a path, or "~"-abbreviated)
+  carries no task, so it counts as absent and the tab keeps the agent's own
+  name, which the 0.6.1 wrapper fix already resolves to `codex` rather than
+  the `node` wrapper. A `user@host:...` title is the shell prompt's, not the
+  agent's -- herdr detects an agent the moment one runs anywhere in the pane,
+  a headless subprocess some other program spawned included, while the title
+  is still whatever the shell last wrote -- and counts as absent too. A short
+  all-caps badge before a pipe is the agent naming itself and is dropped, so
+  opencode's `OC | Reviewing unpushed commits` becomes
+  `reviewing-unpushed-commits`; a lower-case or longer leading word is content
+  and is kept.
+
+- `TITLE_LEAD_VERBS` and `TITLE_FILLER_WORDS` are the word lists behind the
+  above, overridable like every other naming list. `TITLE_WORD_SEPARATOR` is
+  what joins the words that survive: `-` by default, fusing the label into one
+  token (`nightly-ETL-job`), the shape every other tab name has; `' '` reads
+  like the phrase the agent wrote. Its length counts against `MAX_TASK_LEN`
+  like any other character.
+
+- `TITLE_CASE` sets the casing of the label. `fold` (default) downcases every
+  word except an all-caps-and-digits identifier (`nightly-ETL-job`,
+  `reviewing-unpushed`): a sentence-case capital is how the agent writes, not
+  signal, while an identifier's shape carries meaning and case costs no
+  budget. `lower` folds the identifiers too; `keep` leaves the title as the
+  agent cased it.
+
+- `AGENT_TAB_NAMES=(name task)` opens the label with the agent that owns
+  it: `claude:auth-flow`, or through `PROGRAM_ALIASES`, `cc:auth-flow`. (The
+  alias knob itself needs no parts: `claude=cc` renames every claude tab on
+  its own, keyed by the name herdr detects for a wrapped agent.)
+  The task alone cannot say WHO is on it when several agents share a workspace.
+  The parts fit the one `MAX_TASK_LEN` budget -- the task gives up the
+  characters the name part takes, so a short alias buys it more room -- and a
+  title that yields nothing leaves the tab named after the agent alone, never
+  a dangling joint.
+
 ## [0.6.1] - 2026-08-14
 
 ### Fixed

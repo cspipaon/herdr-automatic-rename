@@ -4,7 +4,7 @@
 
 ## Features
 
-**1. Automatic tab rename with the foreground process.** Inspired by [tmux](https://github.com/tmux/tmux)'s `automatic-rename`, each tab shows its foreground process (e.g., `nvim`, `claude`) or the shell at a bare prompt (e.g., `zsh`). Custom renames are respected.
+**1. Automatic tab rename with the foreground process.** Inspired by [tmux](https://github.com/tmux/tmux)'s `automatic-rename`, each tab shows its foreground process (e.g., `nvim`, `claude`) or the shell at a bare prompt (e.g., `zsh`). Custom renames are respected. An agent tab can show [what the agent is working on](#naming-agent-tabs-after-the-work) instead of the agent's name, so several `claude` tabs stay tellable apart.
 
 **2. Automatic prefix spaces/tabs with the 1-9 keybind jump number**. Add an `[N]` prefix to each workspace and tab matching the `1-9` binding for that slot. Glance at the tabs or sidebar, see what runs where, and quickly jump by number. Agents get one too on herdr `< 0.7.5`, which is the last release whose agent names allow it.
 
@@ -48,6 +48,41 @@ AUTO_INDEX_WORKSPACES=0
 Setting one of those to `0` also strips the `[N]` already on those rows, at the next herdr event, so you do not have to run the `clear` action to tidy up after the change.
 
 That cleanup runs only for a kind you name. Nothing here records which `[N]` prefixes the plugin wrote, so it cannot tell one of ours from a name you typed that opens with a bracketed number: `[1] incident` becomes `incident`. Naming the kind is how you ask for that. A config carrying only `AUTO_INDEX=0`, from before these settings existed, leaves workspace and agent labels exactly as they are. Tabs are the exception, and only under `NAME_TABS=1`: that pass runs for the naming, and has always stripped the prefix on its way through. Only digits count either way, so `[wip] deploy` is never touched.
+
+## Naming agent tabs after the work
+
+Naming a tab after its foreground program has one blind spot: it cannot tell two agents apart. Four `claude` tabs all read `claude`. `AGENT_TAB_NAMES=task` names them after what each agent is working on instead:
+
+```
+AGENT_TAB_NAMES=name  │ [1] claude              │ [2] claude          │ [3] claude       │
+AGENT_TAB_NAMES=task  │ [1] screensaver-timeout │ [2] nightly-ETL-job │ [3] auth-rewrite │
+```
+
+Nothing here invents a name. Every agent herdr detects already publishes a summary of its current task as the pane's terminal title, and herdr already carries that on the pane list this plugin reads, so the title is only shortened:
+
+| The agent reports | The tab reads |
+| --- | --- |
+| Adjust the screensaver timeout | `screensaver-timeout` |
+| Investigate why the nightly ETL job drops rows | `nightly-ETL-job-drops-rows` |
+| Fix an off-by-one error in pagination | `off-by-one-error-pagination` |
+| Review RFC7 wording for clarity | `RFC7-wording-clarity` |
+
+The rule is to drop a leading verb (`TITLE_LEAD_VERBS`), drop filler (`TITLE_FILLER_WORDS`), then take whole words until `MAX_TASK_LEN` (default 30; a task's own budget, separate from the `MAX_NAME_LEN` that truncates program labels) is spent — a first word longer than the whole budget is cut to fit rather than skipped — keeping the order the agent wrote them in and joining them with `TITLE_WORD_SEPARATOR` — `-` by default, fusing the label into one token like every other tab name; set `' '` to read like the phrase the agent wrote. Casing follows `TITLE_CASE`: `fold` (default) downcases every word except all-caps-and-digits identifiers (`nightly-ETL-job`, `reviewing-unpushed`), `lower` folds the identifiers too, `keep` leaves the casing as the agent wrote it (the folding is ASCII-only — an accented capital keeps its case). Where knowing which agent owns which task matters, `AGENT_TAB_NAMES=(name task)` composes the agent's name (or its `PROGRAM_ALIASES` short form) with the task, in the order written: `claude:auth-flow`, `cc:auth-flow`, or `auth-flow:cc` under `(task name)`. The name part spends the same `MAX_TASK_LEN` budget the task does. In every mode an alias renames the agent's name wherever it appears and never suppresses the task. Because it only ever selects words already in the title, a summary whose distinguishing word falls past the budget gives a vague label rather than a wrong one: `Review the Herdr tab/workspace/agent numbering proposal` becomes `herdr-tab-workspace-agent`. Raising `MAX_TASK_LEN` is the answer where that reads too thin.
+
+Agents only, and herdr decides which those are: a pane qualifies once herdr publishes a detected agent on it — the same per-pane answer that names a runtime-wrapped agent. There is deliberately no list of agent programs to maintain. One would miss `codex`, whose foreground process is `node`, and would need a new entry for every agent herdr learns to detect. It matters in the other direction too: a pane herdr sees no agent in carries the shell's title, which is a working directory (`user@host:~/code/api`), and that must never become a tab name. So `nvim` keeps its own name, and so does a bare prompt. Inside a detected agent's pane the trust runs the other way: the task also outranks the shell and quick-command fallbacks, and the whole label keys to the agent herdr detected — the name part, its alias, the glyph, and the no-title fallback all follow the detection, never the shell or quick command holding the foreground. A suspended claude reads `claude:auth-flow`, not `zsh:auth-flow`, and with no usable title it reads `claude`.
+
+Agents differ in what they write there, so three shapes get special treatment, all matched on the title rather than on which agent produced it:
+
+| The agent writes | Because | The tab reads |
+| --- | --- | --- |
+| `Adjust screensaver timeout on the Ubuntu box` | a task | `screensaver-timeout` |
+| `myrepo` (its working directory) | no task in it | `codex` (the agent's own name; `WRAPPER_PROGRAMS` is what makes that `codex` and not `node`) |
+| `user@host:~/vaults/notes` (the shell's prompt title) | no task in it | `claude` (the detected agent's name) |
+| `OC \| Reviewing unpushed commits` | a badge, then a task | `reviewing-unpushed-commits` |
+
+A directory — bare, as a path, or `~`-abbreviated — is the repo name the workspace label already carries, so it counts as no title at all. A `user@host:` title is the shell's, not the agent's: herdr detects an agent the moment one runs anywhere in the pane, including a headless subprocess some other program spawned, while the title is still whatever the shell last wrote. A short all-caps badge before a pipe is the agent naming itself; a lower-case or longer leading word is content and is kept.
+
+A title that is missing, or is all verb and filler, falls back to the agent's name, so no tab is left unnamed. Off by default, since it replaces the `claude` a tab reads today, and it costs no extra herdr call on herdr `>= 0.7.2`.
 
 If a row of `zsh` tabs tells you nothing, `HIDE_SHELL=1` names only the tabs actually running something and leaves the rest to herdr, which falls back to its own tab number:
 
@@ -138,15 +173,21 @@ Override the path with `HERDR_AUTOMATIC_RENAME_CONFIG`.
 | `AUTO_INDEX_WORKSPACES` | `AUTO_INDEX` | Number workspaces. Set it alone to keep numbered tabs while workspace names stay plain. |
 | `AUTO_INDEX_TABS` | `AUTO_INDEX` | Number tabs. |
 | `AUTO_INDEX_AGENTS` | `AUTO_INDEX` | Number agents (herdr `< 0.7.5` only, and only under the grouped panel sort). |
+| `AGENT_TAB_NAMES` | `name` | What an agent tab shows, as an ordered list of parts joined by `:` — `name` (the agent, `claude`), `task` (what it's working on, `screensaver-timeout`), so `(name task)` reads `claude:screensaver`. Which tabs count as agents is herdr's own detection, so there is no list to keep. |
+| `TITLE_LEAD_VERBS` | `review`, `adjust`, `fix`, ... | Leading verbs dropped from a title. Every agent is fixing or adding something, so the verb never says which tab this is. |
+| `TITLE_FILLER_WORDS` | `a`, `the`, `to`, `on`, ... | Words dropped from a title wherever they appear. A label is not a sentence. |
+| `MAX_TASK_LEN` | `30` | The length budget for a task label; tasks run longer than program names, so they have their own. When the parts include `name`, its text and joint share it, so a short alias buys the task more room. |
+| `TITLE_WORD_SEPARATOR` | `-` | What joins the words of a task label. The default fuses it into one token (`nightly-ETL-job`), the shape every other tab name has; `' '` reads like the phrase the agent wrote. Counts against `MAX_TASK_LEN`. |
+| `TITLE_CASE` | `fold` | Casing of a task label. `fold` downcases every word except all-caps-and-digits identifiers (`nightly-ETL-job`, `reviewing-unpushed`); `lower` folds the identifiers too; `keep` leaves the agent's casing. |
 | `SHOW_PROGRAM_ARGS` | `0` | `0` shows just the program name (`git`), `1` shows its full command line (`git log --oneline`). |
-| `MAX_NAME_LEN` | `20` | Cut the finished label off after this many characters. |
+| `MAX_NAME_LEN` | `20` | Cut a program or command-line label off after this many characters. Task labels have their own budget, `MAX_TASK_LEN`. |
 | `SHELL_NAME` | `$SHELL` basename | Label shown at an idle prompt when no program is running (e.g. `zsh`). |
 | `HIDE_SHELL` | `0` | `1` gives a shell tab no name at all, so herdr's own tab number shows there instead of `zsh`. Covers the login shell (`SHELL_NAME`), not just the fixed `SHELLS` list. |
 | `SHELLS` | `zsh bash sh fish dash ksh` | Programs counted as "a shell prompt" and shown by their own name. |
 | `NAME_ONLY_PROGRAMS` | editors, git tools, agents | Programs always shown by bare name, never with args (`nvim`, `claude`). |
 | `IGNORED_PROGRAMS` | `ls`, `cd`, `cat`, ... | Quick commands that should not rename the tab. It keeps showing the shell instead. |
 | `WRAPPER_PROGRAMS` | `node`, `npx`, `bun`, `python`, ... | Language runtimes and package runners that front for the program you launched. In a pane herdr has detected an agent in, the tab is named after that agent instead of the runtime. |
-| `PROGRAM_ALIASES` | none | Force a specific program to a custom label, e.g. `("lazygit=lg")`. |
+| `PROGRAM_ALIASES` | none | Force a specific program to a custom label, e.g. `("lazygit=lg" "claude=cc")`. This plugin's rewrite (herdr itself has no aliasing) and needs no other knob: `claude=cc` renames every claude tab on its own. For an agent behind a runtime wrapper the key is the name herdr detects (`codex`, not `node`) — `herdr agent list` prints those names. Under `AGENT_TAB_NAMES` the alias follows the name wherever the mode puts it (prefix, or no-title fallback) and never suppresses the task. |
 | `SUBSTITUTE_SETS` | two rules | `sed -E` rewrites that tidy up the label, e.g. to shorten a path-heavy command line. |
 | `ICONS_ENABLED` | `0` | `1` prepends a Nerd Font glyph for the program (needs a Nerd Font installed). Shell labels never get one, so the tab doesn't flicker between `zsh` and `<glyph> zsh`. |
 | `ICON_STYLE` | `name_and_icon` | When icons are on, show `name_and_icon`, `icon` only, or `name` only. |

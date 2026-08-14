@@ -223,4 +223,234 @@ check "SHOW_PROGRAM_ARGS defaults to name-only" "htop" "$got"
 got=$(bash -c 'SHELL_NAME=zsh; SHOW_PROGRAM_ARGS=1; IGNORED_PROGRAMS=(); . "$1"; ar_format ls "ls -la"' _ "$here/../naming.sh")
 check "empty IGNORED_PROGRAMS override survives" "ls -la" "$got"
 
+# ---- ar_condense_title: shortening an agent's own task summary ----
+# Selection only: every word in the output appears in the input. The rule is drop
+# the leading verb, drop filler, then take whole words until the budget is spent.
+# The budget is pinned to 20 here so each check exercises one rule against a
+# known horizon; the default (30) is asserted separately at the end.
+MAX_TASK_LEN=20
+check "drops the leading verb" "screensaver-timeout" \
+  "$(ar_condense_title 'Adjust screensaver timeout on the Ubuntu box')"
+check "drops filler mid-title" "flaky-auth-test" \
+  "$(ar_condense_title 'Debug flaky auth test in payments service')"
+check "drops leading filler after the verb" "nightly-ETL-job" \
+  "$(ar_condense_title 'Investigate why the nightly ETL job silently drops rows')"
+check "drops a phrasal-verb particle" "tailscale-proxmox" \
+  "$(ar_condense_title 'Set up Tailscale on the Proxmox box')"
+check "keeps an identifier token" "RFC7-wording-clarity" \
+  "$(ar_condense_title 'Review RFC7 wording clarity and suggest changes')"
+check "a hyphenated word stays whole" "off-by-one-error" \
+  "$(ar_condense_title 'Fix off-by-one error in the rolling window')"
+# A title herdr's own stripping left a state glyph on must not open with it, and
+# a slash separates words rather than joining them.
+check "strips a leading state glyph" "herdr-tab-workspace" \
+  "$(ar_condense_title '◐ Review Herdr tab/workspace/agent numbering proposal')"
+# Truncation stops at the first word that does not fit. Taking a later, shorter
+# word instead would read as a non sequitur beside the words before it.
+check "stops at the first word that does not fit" "memory-leak" \
+  "$(ar_condense_title 'Investigate memory leak in the streaming pipeline')"
+check "single over-long word is cut to the budget" "abcdefghijklmnopqrst" \
+  "$(ar_condense_title 'abcdefghijklmnopqrstuvwxyz')"
+check "respects a MAX_TASK_LEN override" "screensaver" \
+  "$(MAX_TASK_LEN=12 ar_condense_title 'Adjust screensaver timeout on the Ubuntu box')"
+# The separator only changes the joint, never which words are chosen...
+check "TITLE_WORD_SEPARATOR=' ' reads like the phrase" "screensaver timeout" \
+  "$(TITLE_WORD_SEPARATOR=' ' ar_condense_title 'Adjust screensaver timeout on the Ubuntu box')"
+# ...and a wider one pays for itself out of the same budget: " - " costs three
+# characters per joint, so "test" (12+3+4) no longer fits in 15.
+check "separator length counts against the budget" "flaky - auth" \
+  "$(MAX_TASK_LEN=15 TITLE_WORD_SEPARATOR=' - ' ar_condense_title 'Debug flaky auth test')"
+check "a title of only filler condenses to nothing" "" \
+  "$(ar_condense_title 'to the and of')"
+check "a verb alone condenses to nothing" "" "$(ar_condense_title 'Refactor')"
+check "an empty title condenses to nothing" "" "$(ar_condense_title '')"
+# A one-word title (herdr falls back to the directory) is already a label.
+check "a bare one-word title is kept" "myrepo" "$(ar_condense_title 'myrepo')"
+
+# ---- TITLE_CASE: what happens to the title's capitals ----
+# fold (the default) downcases sentence case but spares all-caps-and-digits
+# identifiers; lower folds those too; keep leaves the agent's casing alone.
+_ct='Review the ETL Sync for RFC7 compliance'
+check "TITLE_CASE defaults to fold"        "ETL-sync-RFC7" "$(ar_condense_title "$_ct")"
+check "TITLE_CASE=lower folds identifiers" "etl-sync-rfc7" "$(TITLE_CASE=lower ar_condense_title "$_ct")"
+check "TITLE_CASE=keep keeps the casing"   "ETL-Sync-RFC7" "$(TITLE_CASE=keep ar_condense_title "$_ct")"
+
+# An agent that badges its title spends the budget on its own name first.
+# opencode writes "OC | <task>", so the badge goes and the task stays.
+check "drops a short all-caps badge" "reviewing-unpushed" \
+  "$(ar_condense_title 'OC | Reviewing unpushed local git commits')"
+check "badge with no spaces around the pipe" "reviewing-unpushed" \
+  "$(ar_condense_title 'OC|Reviewing unpushed local git commits')"
+# The cap and the upper-case requirement are what keep it off real content: a
+# lower-case or longer leading word is a word, not a badge. The pipe still
+# separates, so nothing is glued together.
+check "lower-case leading word is content" "auth-login-flow" \
+  "$(ar_condense_title 'auth | login flow rewrite')"
+check "a long leading word is content" "LONGER-parser-fix" \
+  "$(ar_condense_title 'LONGER | parser fix that matters')"
+# A pipe anywhere else is only a separator.
+check "a mid-title pipe separates" "parser-fix" \
+  "$(ar_condense_title 'parser | fix')"
+# A title that is nothing but a badge leaves the tab to fall back.
+check "a badge alone condenses to nothing" "" "$(ar_condense_title 'OC |')"
+
+# ---- AGENT_TAB_NAMES: wiring the condensed title into ar_format ----
+_title='Adjust screensaver timeout on the Ubuntu box'
+# "name" is the default, and is the old behavior: an agent tab reads its name.
+check "name is the default -> agent name" "claude" "$(ar_format 'claude' 'claude' "$_title")"
+got=$(bash -c 'SHELL_NAME=zsh; . "$1"; ar_format claude claude "Adjust screensaver timeout on the Ubuntu box"' _ "$here/../naming.sh")
+check "AGENT_TAB_NAMES defaults to name" "claude" "$got"
+check "task -> agent tab named after the task" "screensaver-timeout" \
+  "$(AGENT_TAB_NAMES=task ar_format 'claude' 'claude' "$_title")"
+# Which panes get a title is herdr's call, made in the engine by
+# ar_pane_agent_title, so this function does not test the program: whatever it
+# is named, a tab handed a title is named from it. codex reports its program as
+# `node`, which is exactly why the program name cannot be the gate (scenario 19
+# in test_reconcile.sh covers the engine side).
+check "the program name is not the gate" "screensaver-timeout" \
+  "$(AGENT_TAB_NAMES=task ar_format 'node' 'node' "$_title")"
+check "bare prompt ignores the title" "zsh" \
+  "$(AGENT_TAB_NAMES=task ar_format '' '' "$_title")"
+# Falling back keeps a tab named rather than blank whenever the title yields
+# nothing: absent, or entirely verb and filler.
+check "no title -> falls back to agent name" "claude" \
+  "$(AGENT_TAB_NAMES=task ar_format 'claude' 'claude' '')"
+check "unusable title -> falls back to agent name" "claude" \
+  "$(AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'to the and of')"
+# An alias renames the agent's NAME wherever the mode puts it, and never turns
+# the task display off. Under "task" the name appears only in the fallback.
+check "task outranks an alias" "screensaver-timeout" \
+  "$(
+    PROGRAM_ALIASES=("claude=cc")
+    AGENT_TAB_NAMES=task ar_format 'claude' 'claude' "$_title"
+  )"
+check "the alias names the no-title fallback" "cc" \
+  "$(
+    PROGRAM_ALIASES=("claude=cc")
+    AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'to the and of'
+  )"
+# While herdr detects an agent in the pane, the task also outranks the shell
+# and quick-command fallbacks for that pane: the label stays on the task while
+# an `ls` or a bare prompt (say, a suspended agent) holds the foreground.
+check "a quick command keeps the agent's task" "screensaver-timeout" \
+  "$(AGENT_TAB_NAMES=task ar_format 'ls' 'ls' "$_title")"
+check "a shell prompt in the pane keeps the task" "screensaver-timeout" \
+  "$(AGENT_TAB_NAMES=task ar_format 'zsh' 'zsh' "$_title")"
+# The engine hands ar_format the DETECTED agent (4th argument) alongside the
+# title; the name part, its alias, the glyph and the no-title fallback then key
+# to the agent, not to whatever holds the pane's foreground -- a suspended
+# agent's shell prompt stays that agent's tab.
+check "the agent, not the foreground, owns the task" "claude:screensaver" \
+  "$(
+    AGENT_TAB_NAMES=(name task)
+    ar_format 'zsh' 'zsh' "$_title" 'claude'
+  )"
+check "the agent fallback outranks the foreground" "claude" \
+  "$(AGENT_TAB_NAMES=task ar_format 'zsh' 'zsh' 'to the and of' 'claude')"
+check "the agent fallback goes through the alias" "cc" \
+  "$(
+    PROGRAM_ALIASES=("claude=cc")
+    AGENT_TAB_NAMES=task ar_format 'zsh' 'zsh' 'to the and of' 'claude'
+  )"
+check "the agent's glyph rides a suspended pane" "$g_agent screensaver" \
+  "$(ICONS_ENABLED=1 AGENT_TAB_NAMES=task ar_format 'zsh' 'zsh' "$_title" 'claude')"
+# The glyph and its space are priced out of the task budget before the task is
+# condensed, so the final truncation never cuts a chosen word in half...
+check "the glyph is priced out of the task budget" "$g_agent auth-flow" \
+  "$(ICONS_ENABLED=1 MAX_TASK_LEN=14 AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'Fix the auth flow sync')"
+# ...and the pricing happens in jq, by codepoint: under a C locale bash counts
+# bytes and would charge this three-letter alias as six.
+got=$(LC_ALL=C bash -c 'SHELL_NAME=zsh; PROGRAM_ALIASES=("claude=ééé"); AGENT_TAB_NAMES=(name task); MAX_TASK_LEN=7; . "$1"; ar_format claude claude "Fix auth flow"' _ "$here/../naming.sh")
+check "a non-ASCII alias is priced in codepoints" "ééé:aut" "$got"
+# Garbage-in: duplicate parts collapse to one during normalization, so the
+# budget and the rendering cannot disagree; and an unknown ICON_STYLE still
+# reserves the glyph, because the formatter's catch-all will show it.
+check "duplicate parts collapse" "auth-flow" \
+  "$(
+    AGENT_TAB_NAMES=(task task)
+    MAX_TASK_LEN=12
+    ar_format 'claude' 'claude' 'Fix auth flow'
+  )"
+check "an unknown ICON_STYLE still reserves the glyph" "I auth-flow" \
+  "$(
+    ICON_MAP=("claude=I")
+    ICONS_ENABLED=1 ICON_STYLE=bogus MAX_TASK_LEN=14 AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'Fix the auth flow sync'
+  )"
+# HIDE_SHELL blanks shell labels, not a rendered task in a shell-fronted pane.
+check "HIDE_SHELL spares a rendered task" "screensaver-timeout" \
+  "$(HIDE_SHELL=1 AGENT_TAB_NAMES=task ar_format 'zsh' 'zsh' "$_title")"
+# Icons stay keyed to the agent, not the label text: a task label carries the
+# agent's glyph, and ICON_STYLE=icon shows the glyph alone as for any program.
+check "a task label carries the agent's glyph" "$g_agent auth-flow" \
+  "$(ICONS_ENABLED=1 AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'Fix the auth flow')"
+check "ICON_STYLE=icon shows the glyph alone" "$g_agent" \
+  "$(ICONS_ENABLED=1 ICON_STYLE=icon AGENT_TAB_NAMES=task ar_format 'claude' 'claude' 'Fix the auth flow')"
+check "a task label obeys MAX_TASK_LEN" "screensaver" \
+  "$(MAX_TASK_LEN=12 AGENT_TAB_NAMES=task ar_format 'claude' 'claude' "$_title")"
+
+# ---- AGENT_TAB_NAMES=(name task): composing the agent's name with its task ----
+check "(name task) opens with the agent" "claude:screensaver" \
+  "$(
+    AGENT_TAB_NAMES=(name task)
+    ar_format 'claude' 'claude' "$_title"
+  )"
+# The parts render in the order the config wrote them.
+check "parts are honored in order" "auth-flow:claude" \
+  "$(
+    AGENT_TAB_NAMES=(task name)
+    ar_format 'claude' 'claude' 'Fix the auth flow'
+  )"
+# The alias is the user's short form for the agent, so it is the prefix too.
+check "the prefix maps through PROGRAM_ALIASES" "cc:screensaver" \
+  "$(
+    PROGRAM_ALIASES=("claude=cc")
+    AGENT_TAB_NAMES=(name task)
+    ar_format 'claude' 'claude' "$_title"
+  )"
+# Prefix, colon and task share the one budget: 12 leaves "claude:" five
+# characters of task, and the whole label lands exactly on MAX_TASK_LEN.
+check "prefix and task fit MAX_TASK_LEN together" "claude:scree" \
+  "$(
+    MAX_TASK_LEN=12
+    AGENT_TAB_NAMES=(name task)
+    ar_format 'claude' 'claude' "$_title"
+  )"
+# A budget the prefix exhausts drops the title, not the name -- and a title
+# that yields nothing never leaves a dangling joint.
+check "prefix that exhausts the budget -> name alone" "claude" \
+  "$(
+    MAX_TASK_LEN=7
+    AGENT_TAB_NAMES=(name task)
+    ar_format 'claude' 'claude' "$_title"
+  )"
+check "unusable title under the prefix -> name alone" "claude" \
+  "$(
+    AGENT_TAB_NAMES=(name task)
+    ar_format 'claude' 'claude' 'to the and of'
+  )"
+check "unusable title under the prefix keeps the bare alias" "cc" \
+  "$(
+    PROGRAM_ALIASES=("claude=cc")
+    AGENT_TAB_NAMES=(name task)
+    ar_format 'claude' 'claude' 'to the and of'
+  )"
+# An explicit "name", and anything unrecognized, is the default behavior.
+check "part name alone ignores the title" "claude" \
+  "$(AGENT_TAB_NAMES=name ar_format 'claude' 'claude' "$_title")"
+check "an unknown part is ignored" "claude" \
+  "$(AGENT_TAB_NAMES=bogus ar_format 'claude' 'claude' "$_title")"
+# An intentionally-empty word list must survive the declare -p guard, the same as
+# every other list: the title is then shortened without dropping anything.
+got=$(bash -c 'SHELL_NAME=zsh; AGENT_TAB_NAMES=task; MAX_TASK_LEN=20; TITLE_LEAD_VERBS=(); TITLE_FILLER_WORDS=(); . "$1"; ar_format claude claude "Adjust screensaver timeout on the Ubuntu box"' _ "$here/../naming.sh")
+check "empty title word lists survive" "adjust-screensaver" "$got"
+
+# The default budgets, exercised in a fresh shell: a task label gets
+# MAX_TASK_LEN's 30 (this title lands on exactly 30), and ar_format's final
+# truncation must measure it against that same budget rather than
+# MAX_NAME_LEN's 20, or the label built here would be chopped right back.
+got=$(bash -c 'SHELL_NAME=zsh; . "$1"; ar_condense_title "Adjust screensaver timeout on the Ubuntu box"' _ "$here/../naming.sh")
+check "a task label defaults to a 30 budget" "screensaver-timeout-ubuntu-box" "$got"
+got=$(bash -c 'SHELL_NAME=zsh; AGENT_TAB_NAMES=task; . "$1"; ar_format claude claude "Adjust screensaver timeout on the Ubuntu box"' _ "$here/../naming.sh")
+check "the final truncation honors the task budget" "screensaver-timeout-ubuntu-box" "$got"
+
 t_summary
