@@ -411,17 +411,25 @@ ar_pane_agent_title() {
         #     herdr detects an agent the moment one runs anywhere in the pane
         #     -- including a headless subprocess some other program spawned --
         #     while the pane title is still whatever the shell last wrote
-        #     there. Requiring the path keeps the rule off a real task that
-        #     merely opens with an email-like token ("alice@example.com:
-        #     investigate auth failures" is a task).
-        # A trailing slash is stripped before the path comparison, so
+        #     there. "Path" means "~..." or "/...", or a relative form that
+        #     names the pane cwd itself (PS1 \W titles "user@host:repo",
+        #     with or without a "./"). Anchoring the relative form to the cwd
+        #     keeps the rule off a real task that merely opens with an
+        #     email-like token ("alice@example.com: investigate auth failures"
+        #     is a task).
+        # A trailing slash is stripped before every path comparison, so
         # "/home/u/code/repo/" and "~/code/repo/" count the same as their
         # slashless twins.
         | ($t | sub("/$"; "")) as $tn
         | ([($cw | split("/") | last), ($fw | split("/") | last), $cw, $fw]
            + (if $home != "" and ($cw | startswith($home)) then ["~" + $cw[($home | length):]] else [] end)
            + (if $home != "" and ($fw | startswith($home)) then ["~" + $fw[($home | length):]] else [] end)) as $notask
-        | if $t == "" or ($notask | index($tn)) or ($t | test("^[^@[:space:]]+@[^:[:space:]]+:(~|/|$)")) then "" else $t end
+        | (if ($t | test("^[^@[:space:]]+@[^:[:space:]]+:")) then
+             ($t | sub("^[^@[:space:]]+@[^:[:space:]]+:"; "") | sub("^\\./"; "") | sub("/$"; ""))
+           else null end) as $ps
+        | if $t == "" or ($notask | index($tn))
+             or ($ps != null and ($ps == "" or ($ps | test("^[~/]")) or ($notask | index($ps))))
+          then "" else $t end
       end
   ' 2>/dev/null
 }

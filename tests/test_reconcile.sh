@@ -758,7 +758,8 @@ fixture tabs_w1.json <<'JSON'
   {"tab_id":"w1:t8","label":"8","pane_count":1,"focused":false},
   {"tab_id":"w1:t9","label":"9","pane_count":1,"focused":false},
   {"tab_id":"w1:t10","label":"10","pane_count":1,"focused":false},
-  {"tab_id":"w1:t11","label":"11","pane_count":1,"focused":false}
+  {"tab_id":"w1:t11","label":"11","pane_count":1,"focused":false},
+  {"tab_id":"w1:t12","label":"12","pane_count":1,"focused":false}
 ]}}
 JSON
 # p1 an agent with a task title; p2 an agent herdr set no title for; p3 nvim,
@@ -789,7 +790,9 @@ fixture panes.json <<'JSON'
   {"pane_id":"p10","tab_id":"w1:t10","focused":false,"agent":"claude","agent_status":"working",
    "cwd":"HOMEDIR/code/api","terminal_title_stripped":"~/code/api/"},
   {"pane_id":"p11","tab_id":"w1:t11","focused":false,"agent":"claude","agent_status":"working",
-   "terminal_title_stripped":"bob@corp: rotate keys"}
+   "terminal_title_stripped":"bob@corp: rotate keys"},
+  {"pane_id":"p12","tab_id":"w1:t12","focused":false,"agent":"claude","agent_status":"working",
+   "cwd":"/home/u/code/api","terminal_title_stripped":"user@host:api"}
 ]}}
 JSON
 # Rewrite the HOMEDIR sentinel with the runner's real home so the
@@ -848,6 +851,13 @@ fixture procinfo_p11.json <<'JSON'
 {"result":{"process_info":{"foreground_process_group_id":1100,
   "foreground_processes":[{"pid":1100,"argv0":"claude","cmdline":"claude"}]}}}
 JSON
+# p12: a PS1 \W prompt titles with the RELATIVE basename ("user@host:api").
+# The relative form is anchored to the pane's own directory, so it counts as a
+# prompt while bob@corp above stays a task.
+fixture procinfo_p12.json <<'JSON'
+{"result":{"process_info":{"foreground_process_group_id":1200,
+  "foreground_processes":[{"pid":1200,"argv0":"-zsh","cmdline":"-zsh"}]}}}
+JSON
 run_event tab.focused
 out=$(log)
 check_contains "agent tab named after its task"  "$out" "tab rename w1:t1 [1] screensaver-timeout-ubuntu-box"
@@ -871,6 +881,7 @@ check_contains "a shell-prompt title is not a task"  "$out" "tab rename w1:t8 [8
 check_contains "a bare-path title is not a task"     "$out" "tab rename w1:t9 [9] claude"
 check_contains "a trailing slash changes nothing"    "$out" "tab rename w1:t10 claude"
 check_contains "an email-opening task stays a task"  "$out" "tab rename w1:t11 bob@corp-rotate-keys"
+check_contains "a relative-path prompt is not a task" "$out" "tab rename w1:t12 claude"
 teardown
 
 # ======================================================================
